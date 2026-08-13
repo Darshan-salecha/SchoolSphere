@@ -1,0 +1,29 @@
+# Never bake secrets or local state into an image
+.env
+.env.*
+!.env.example
+.storage
+
+# Build and dependency output — rebuilt inside the image
+node_modules
+.next
+out
+coverage
+
+# Local tooling noise
+.git
+.github
+.vscode
+.idea
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
+
+# Not needed at build or runtime
+tests
+vitest.config.ts
+docker-compose*.yml
+Dockerfile
+.dockerignore
+README.md
+DEPLOYMENT.md

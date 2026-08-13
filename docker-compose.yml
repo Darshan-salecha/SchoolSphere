@@ -1,0 +1,22 @@
+# Local development database only — Postgres on localhost:5432.
+# For production use docker-compose.prod.yml, which also builds and runs the app.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: schoolsphere-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: schoolsphere
+      POSTGRES_PASSWORD: schoolsphere
+      POSTGRES_DB: schoolsphere
+    ports:
+      - '5432:5432'
+    volumes:
+      - schoolsphere_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U schoolsphere -d schoolsphere']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+volumes:
+  schoolsphere_pgdata:

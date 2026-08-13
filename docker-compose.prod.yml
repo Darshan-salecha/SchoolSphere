@@ -1,0 +1,100 @@
+# SchoolSphere production stack.
+#
+#   caddy   → terminates TLS, gets certificates automatically, proxies to app
+#   app     → the Next.js standalone server (never exposed to the host directly)
+#   migrate → runs once per deploy and exits; app waits for it to succeed
+#   db      → Postgres, reachable only on the internal network
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+name: schoolsphere
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-schoolsphere}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-schoolsphere}
+      # Fail fast on a weak setup rather than silently trusting local connections.
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    # No `ports:` on purpose — Postgres stays on the internal network only.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-schoolsphere} -d ${POSTGRES_DB:-schoolsphere}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [internal]
+
+  migrate:
+    build:
+      context: .
+      target: tools
+    command: ['node', 'scripts/migrate.mjs']
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: 'no'
+    networks: [internal]
+
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env.production}
+      APP_URL: ${APP_URL}
+      # Demo credentials and on-screen OTP codes must be off in production.
+      DEMO_MODE: 'false'
+      SMS_PROVIDER: ${SMS_PROVIDER:-mock}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mock}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+    volumes:
+      - uploads:/app/.storage
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - '3000'
+    networks: [internal, web]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    networks: [web]
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:
+
+networks:
+  # Only caddy and app sit on `web`; the database is unreachable from outside.
+  web:
+  internal:
+    internal: true

@@ -1,0 +1,32 @@
+# Caddy obtains and renews Let's Encrypt certificates automatically.
+# The only prerequisite is that APP_DOMAIN resolves to this server's public IP
+# and that ports 80 and 443 are open.
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# HSTS is set here rather than in the app so it also covers redirects.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Health checks should never be cached or logged as page views.
+	handle /api/health {
+		reverse_proxy app:3000
+	}
+
+	handle {
+		reverse_proxy app:3000 {
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
