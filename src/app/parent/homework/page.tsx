@@ -3,14 +3,31 @@ import { db } from '@/db';
 import * as t from '@/db/schema';
 import { requireSchoolPage } from '@/lib/page-guards';
 import { parentContext, currentSection } from '@/lib/parent-context';
+import { submissionsFor } from '@/lib/services/homework';
 import { PageHeader } from '@/components/ui/page';
 import { Card, CardBody } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Badge, type Tone } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/states';
 import { ChildSwitcher } from '@/components/child-switcher';
 import { formatDate } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
+
+/** Read-only for guardians: what was set, whether it was done, what the teacher said. */
+function statusFor(
+  submission: typeof t.homeworkSubmissions.$inferSelect | undefined,
+  overdue: boolean,
+): { label: string; tone: Tone } {
+  const done = submission?.status === 'SUBMITTED' || submission?.status === 'LATE';
+  if (submission?.reviewStatus === 'ACKNOWLEDGED') return { label: 'Acknowledged by teacher', tone: 'brand' };
+  if (submission?.reviewStatus === 'NEEDS_REWORK') return { label: 'Teacher asked for a redo', tone: 'red' };
+  if (done) {
+    return submission?.status === 'LATE'
+      ? { label: 'Done · late', tone: 'amber' }
+      : { label: 'Done · awaiting teacher', tone: 'green' };
+  }
+  return overdue ? { label: 'Not done · overdue', tone: 'red' } : { label: 'Not done yet', tone: 'amber' };
+}
 
 export default async function ParentHomeworkPage() {
   const session = await requireSchoolPage('portal.parent');
@@ -27,13 +44,27 @@ export default async function ParentHomeworkPage() {
       })
     : [];
 
+  const submissions = await submissionsFor(session.schoolId, rows.map((r) => r.id), [selected.id]);
+
   const today = new Date().toISOString().slice(0, 10);
-  const upcoming = rows.filter((r) => r.dueDate >= today);
-  const past = rows.filter((r) => r.dueDate < today);
+  const items = rows.map((h) => {
+    const submission = submissions.get(`${h.id}:${selected.id}`);
+    const overdue = h.dueDate < today;
+    return { h, submission, overdue, state: statusFor(submission, overdue) };
+  });
+
+  const upcoming = items.filter((i) => !i.overdue);
+  const past = items.filter((i) => i.overdue);
+  const outstanding = items.filter(
+    (i) => i.submission?.status !== 'SUBMITTED' && i.submission?.status !== 'LATE' && !i.overdue,
+  ).length;
 
   return (
     <>
-      <PageHeader title="Homework" description={`Everything set for ${selected.firstName}'s class.`} />
+      <PageHeader
+        title="Homework"
+        description={`What ${selected.firstName}'s class has been set, and how ${selected.firstName} is tracking against it.`}
+      />
       <ChildSwitcher
         selectedId={selected.id}
         children={children.map((c) => ({
@@ -45,17 +76,22 @@ export default async function ParentHomeworkPage() {
         }))}
       />
 
-      {rows.length === 0 ? (
+      {items.length === 0 ? (
         <div className="card">
           <EmptyState title="No homework yet" description="Homework set by teachers appears here as soon as it is posted." />
         </div>
       ) : (
         <div className="space-y-6">
           <section>
-            <h2 className="mb-3 text-sm font-semibold text-slate-900">Due now</h2>
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">
+              Due now
+              {outstanding > 0 && (
+                <span className="ml-2 font-normal text-slate-500">· {outstanding} still to do</span>
+              )}
+            </h2>
             <div className="space-y-3">
               {upcoming.length === 0 && <p className="text-sm text-slate-500">Nothing outstanding.</p>}
-              {upcoming.map((h) => (
+              {upcoming.map(({ h, submission, state }) => (
                 <Card key={h.id}>
                   <CardBody>
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -65,8 +101,21 @@ export default async function ParentHomeworkPage() {
                         <p className="mt-2 text-xs text-slate-500">
                           {h.subject.name} · set by {h.teacher.user.name}
                         </p>
+                        {submission?.note && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            {selected.firstName} noted: “{submission.note}”
+                          </p>
+                        )}
+                        {submission?.feedback && (
+                          <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                            Teacher: “{submission.feedback}”
+                          </p>
+                        )}
                       </div>
-                      <Badge tone="blue">due {formatDate(h.dueDate, { day: 'numeric', month: 'short' })}</Badge>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge tone="blue">due {formatDate(h.dueDate, { day: 'numeric', month: 'short' })}</Badge>
+                        <Badge tone={state.tone}>{state.label}</Badge>
+                      </div>
                     </div>
                   </CardBody>
                 </Card>
@@ -78,13 +127,18 @@ export default async function ParentHomeworkPage() {
             <section>
               <h2 className="mb-3 text-sm font-semibold text-slate-900">Earlier</h2>
               <div className="space-y-2">
-                {past.slice(0, 20).map((h) => (
+                {past.slice(0, 20).map(({ h, submission, state }) => (
                   <div key={h.id} className="card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-700">{h.title}</p>
-                      <p className="text-xs text-slate-400">{h.subject.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {h.subject.name} · due {formatDate(h.dueDate, { day: 'numeric', month: 'short' })}
+                      </p>
+                      {submission?.feedback && (
+                        <p className="mt-1 text-xs text-slate-500">Teacher: “{submission.feedback}”</p>
+                      )}
                     </div>
-                    <span className="text-xs text-slate-400">{formatDate(h.dueDate)}</span>
+                    <Badge tone={state.tone}>{state.label}</Badge>
                   </div>
                 ))}
               </div>

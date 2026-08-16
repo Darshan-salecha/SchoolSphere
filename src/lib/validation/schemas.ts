@@ -195,6 +195,26 @@ export const homeworkSchema = z.object({
   allowSubmission: z.boolean().default(false),
 });
 
+/** A student marking their own homework done — note and link are both optional. */
+export const homeworkSubmitSchema = z.object({
+  note: z.string().trim().max(500, 'Keep the note under 500 characters').optional(),
+  link: z.string().trim().max(500).url('Enter a valid link, starting with https://').optional().or(z.literal('')),
+});
+
+/** A teacher acknowledging one or more students on a single homework item. */
+export const homeworkReviewSchema = z.object({
+  entries: z
+    .array(
+      z.object({
+        studentId: cuid,
+        status: z.enum(['PENDING', 'ACKNOWLEDGED', 'NEEDS_REWORK']),
+        feedback: z.string().trim().max(500, 'Keep feedback under 500 characters').optional(),
+      }),
+    )
+    .min(1, 'Select at least one student')
+    .max(200),
+});
+
 export const assignmentSchema = homeworkSchema.extend({
   maxMarks: z.coerce.number().int().min(1).max(500).default(20),
   allowLate: z.boolean().default(true),

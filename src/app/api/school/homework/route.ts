@@ -6,7 +6,7 @@ import { requireSchoolContext } from '@/lib/auth/session';
 import { homeworkSchema } from '@/lib/validation/schemas';
 import { assertCanTeach } from '@/lib/scope';
 import { assertSameSchool } from '@/lib/tenant';
-import { guardianUserIds, notify } from '@/lib/services/notify';
+import { guardianUserIds, notify, studentUserIds } from '@/lib/services/notify';
 import { recordAudit } from '@/lib/audit';
 import { badRequest } from '@/lib/errors';
 
@@ -44,14 +44,22 @@ export const POST = handler(async (req: Request) => {
     .select({ studentId: t.enrollments.studentId })
     .from(t.enrollments)
     .where(eq(t.enrollments.sectionId, input.sectionId));
-  const userIds = await guardianUserIds(session.schoolId, students.map((s) => s.studentId));
-  await notify({
+  const studentIds = students.map((s) => s.studentId);
+  const message = {
     schoolId: session.schoolId,
-    userIds,
     type: 'HOMEWORK',
     title: `New homework for ${section.class.name}-${section.name}`,
     body: `${input.title} — due ${input.dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}.`,
+  };
+  await notify({
+    ...message,
+    userIds: await guardianUserIds(session.schoolId, studentIds),
     link: '/parent/homework',
+  });
+  await notify({
+    ...message,
+    userIds: await studentUserIds(session.schoolId, studentIds),
+    link: '/student/homework',
   });
 
   await recordAudit({ session, action: 'homework.created', entity: 'Homework', entityId: row.id, after: { title: row.title, sectionId: row.sectionId } });

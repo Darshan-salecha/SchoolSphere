@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import * as t from '@/db/schema';
 import { sendSms } from '@/lib/integrations/sms';
@@ -63,6 +63,16 @@ export async function guardianUserIds(schoolId: string, studentIds: string[]) {
     .select({ userId: t.parents.userId })
     .from(t.studentParents)
     .innerJoin(t.parents, eq(t.parents.id, t.studentParents.parentId))
-    .where(inArray(t.studentParents.studentId, studentIds));
+    .where(and(eq(t.studentParents.schoolId, schoolId), inArray(t.studentParents.studentId, studentIds)));
   return [...new Set(rows.map((r) => r.userId))];
+}
+
+/** User ids for students who have their own login — used alongside guardianUserIds. */
+export async function studentUserIds(schoolId: string, studentIds: string[]) {
+  if (!studentIds.length) return [];
+  const rows = await db
+    .select({ userId: t.students.userId })
+    .from(t.students)
+    .where(and(eq(t.students.schoolId, schoolId), inArray(t.students.id, studentIds)));
+  return [...new Set(rows.map((r) => r.userId).filter((id): id is string => Boolean(id)))];
 }

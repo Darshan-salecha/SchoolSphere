@@ -49,6 +49,8 @@ export const guardianAccessEnum = pgEnum('guardian_access', ['FULL', 'LIMITED'])
 export const attendanceStatusEnum = pgEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'HALF_DAY', 'EXCUSED']);
 export const examStatusEnum = pgEnum('exam_status', ['DRAFT', 'SCHEDULED', 'ONGOING', 'COMPLETED', 'RESULTS_PUBLISHED']);
 export const submissionStatusEnum = pgEnum('submission_status', ['PENDING', 'SUBMITTED', 'LATE', 'GRADED']);
+// Homework is tracked, not graded: the teacher acknowledges the work or sends it back.
+export const homeworkReviewEnum = pgEnum('homework_review_status', ['PENDING', 'ACKNOWLEDGED', 'NEEDS_REWORK']);
 export const announcementTypeEnum = pgEnum('announcement_type', ['GENERAL', 'EMERGENCY', 'ACADEMIC', 'EXAM', 'HOLIDAY', 'FEE', 'TRANSPORT', 'EVENT']);
 export const leaveStatusEnum = pgEnum('leave_status', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
 export const feeStatusEnum = pgEnum('fee_status', ['PENDING', 'PARTIAL', 'PAID', 'OVERDUE', 'WAIVED']);
@@ -636,12 +638,21 @@ export const homeworkSubmissions = pgTable(
     studentId: text('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
     status: submissionStatusEnum('status').notNull().default('PENDING'),
     note: text('note'),
+    link: varchar('link', { length: 500 }),
     attachments: jsonb('attachments'),
     marks: doublePrecision('marks'),
     feedback: varchar('feedback', { length: 500 }),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    // Teacher acknowledgement — the tracking half of the record.
+    reviewStatus: homeworkReviewEnum('review_status').notNull().default('PENDING'),
+    reviewedById: text('reviewed_by_id').references(() => teachers.id, { onDelete: 'set null' }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   },
-  (t) => [uniqueIndex('homework_submissions_unique').on(t.homeworkId, t.studentId), index('homework_submissions_school_idx').on(t.schoolId)],
+  (t) => [
+    uniqueIndex('homework_submissions_unique').on(t.homeworkId, t.studentId),
+    index('homework_submissions_school_idx').on(t.schoolId),
+    index('homework_submissions_student_idx').on(t.schoolId, t.studentId),
+  ],
 );
 
 export const assignments = pgTable(
@@ -1176,6 +1187,7 @@ export const homeworkRelations = relations(homework, ({ one, many }) => ({
 export const homeworkSubmissionsRelations = relations(homeworkSubmissions, ({ one }) => ({
   homework: one(homework, { fields: [homeworkSubmissions.homeworkId], references: [homework.id] }),
   student: one(students, { fields: [homeworkSubmissions.studentId], references: [students.id] }),
+  reviewedBy: one(teachers, { fields: [homeworkSubmissions.reviewedById], references: [teachers.id] }),
 }));
 
 export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
@@ -1230,6 +1242,8 @@ export type ExamSubject = typeof examSubjects.$inferSelect;
 export type Mark = typeof marks.$inferSelect;
 export type Result = typeof results.$inferSelect;
 export type Homework = typeof homework.$inferSelect;
+export type HomeworkSubmission = typeof homeworkSubmissions.$inferSelect;
+export type HomeworkReviewStatus = (typeof homeworkReviewEnum.enumValues)[number];
 export type Assignment = typeof assignments.$inferSelect;
 export type Announcement = typeof announcements.$inferSelect;
 export type SchoolEvent = typeof events.$inferSelect;

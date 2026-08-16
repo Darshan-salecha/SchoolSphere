@@ -1,9 +1,11 @@
+import Link from 'next/link';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import * as t from '@/db/schema';
 import { requireSchoolPage } from '@/lib/page-guards';
 import { listSections, listSubjects } from '@/lib/school-data';
 import { accessibleSectionIds } from '@/lib/scope';
+import { trackingCounts } from '@/lib/services/homework';
 import { PageHeader } from '@/components/ui/page';
 import { QuickForm } from '@/components/forms/quick-form';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
@@ -33,12 +35,14 @@ export default async function HomeworkPage() {
     : [];
 
   const today = new Date().toISOString().slice(0, 10);
+  const counts = await trackingCounts(session.schoolId, rows.map((r) => r.id));
+  const rosterSize = new Map(sections.map((s) => [s.id, s.studentCount]));
 
   return (
     <>
       <PageHeader
         title="Homework"
-        description="Guardians are notified as soon as homework is posted."
+        description="Guardians are notified as soon as homework is posted. Open an item to track who has done it."
         action={
           session.permissions.includes('homework.manage') ? (
             <QuickForm
@@ -75,25 +79,46 @@ export default async function HomeworkPage() {
               <TH>Subject</TH>
               <TH>Set by</TH>
               <TH>Due</TH>
-              <TH>Submissions</TH>
+              <TH>Done</TH>
+              <TH>Review</TH>
             </TR>
           </THead>
           <TBody>
-            {rows.map((h) => (
-              <TR key={h.id}>
-                <TD>
-                  <p className="font-medium text-slate-900">{h.title}</p>
-                  <p className="line-clamp-1 text-xs text-slate-500">{h.description}</p>
-                </TD>
-                <TD>{h.section.class.name}-{h.section.name}</TD>
-                <TD><Badge tone="slate">{h.subject.name}</Badge></TD>
-                <TD className="text-slate-500">{h.teacher.user.name}</TD>
-                <TD>
-                  <span className={h.dueDate < today ? 'text-slate-400' : 'font-medium text-slate-900'}>{formatDate(h.dueDate)}</span>
-                </TD>
-                <TD>{h.allowSubmission ? <Badge tone="blue">Online</Badge> : <Badge tone="slate">In class</Badge>}</TD>
-              </TR>
-            ))}
+            {rows.map((h) => {
+              const c = counts.get(h.id) ?? { done: 0, acknowledged: 0, rework: 0 };
+              const total = rosterSize.get(h.sectionId) ?? 0;
+              const awaiting = Math.max(0, c.done - c.acknowledged - c.rework);
+              return (
+                <TR key={h.id}>
+                  <TD>
+                    <Link href={`/school/homework/${h.id}`} className="font-medium text-slate-900 hover:text-brand-700">
+                      {h.title}
+                    </Link>
+                    <p className="line-clamp-1 text-xs text-slate-500">{h.description}</p>
+                  </TD>
+                  <TD>{h.section.class.name}-{h.section.name}</TD>
+                  <TD><Badge tone="slate">{h.subject.name}</Badge></TD>
+                  <TD className="text-slate-500">{h.teacher.user.name}</TD>
+                  <TD>
+                    <span className={h.dueDate < today ? 'text-slate-400' : 'font-medium text-slate-900'}>{formatDate(h.dueDate)}</span>
+                  </TD>
+                  <TD>
+                    <span className="font-medium text-slate-900">{c.done}</span>
+                    <span className="text-slate-400">/{total}</span>
+                  </TD>
+                  <TD>
+                    <div className="flex flex-wrap gap-1">
+                      {c.acknowledged > 0 && <Badge tone="brand">{c.acknowledged} acknowledged</Badge>}
+                      {c.rework > 0 && <Badge tone="red">{c.rework} rework</Badge>}
+                      {awaiting > 0 && <Badge tone="amber">{awaiting} to review</Badge>}
+                      {c.done === 0 && c.acknowledged === 0 && c.rework === 0 && (
+                        <span className="text-xs text-slate-400">Nothing yet</span>
+                      )}
+                    </div>
+                  </TD>
+                </TR>
+              );
+            })}
           </TBody>
         </Table>
       )}

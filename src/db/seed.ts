@@ -477,9 +477,41 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
       }
     }
   }
-  await db.insert(t.homework).values(homeworkValues);
+  const homeworkRows = await db.insert(t.homework).values(homeworkValues).returning();
   await db.insert(t.assignments).values(assignmentValues);
-  log(`homework: ${homeworkValues.length}, assignments: ${assignmentValues.length}`);
+
+  // Homework tracking: most of the class ticks it off, the teacher has worked
+  // through part of the pile, and one or two are sent back for a redo.
+  const sectionKeyById = new Map([...sectionByKey].map(([key, section]) => [section.id, key]));
+  const submissionValues: (typeof t.homeworkSubmissions.$inferInsert)[] = [];
+  for (const [hIdx, hw] of homeworkRows.entries()) {
+    const classmates = studentRecords.filter((s) => s.sectionKey === sectionKeyById.get(hw.sectionId));
+    const overdue = hw.dueDate < iso(today);
+    for (const [sIdx, student] of classmates.entries()) {
+      // Roughly one in five has not done it yet — no row at all, which is the
+      // real-world "nothing recorded" state the tracker has to handle.
+      if ((sIdx + hIdx) % 5 === 0) continue;
+      const late = overdue && (sIdx + hIdx) % 4 === 0;
+      const reviewed = hIdx % 2 === 0 && sIdx % 3 !== 2;
+      const rework = reviewed && (sIdx + hIdx) % 7 === 0;
+      submissionValues.push({
+        schoolId: school.id,
+        homeworkId: hw.id,
+        studentId: student.id,
+        status: late ? 'LATE' : 'SUBMITTED',
+        note: sIdx % 3 === 0 ? 'Completed in my notebook.' : null,
+        submittedAt: addDays(today, late ? 1 : -1),
+        reviewStatus: rework ? 'NEEDS_REWORK' : reviewed ? 'ACKNOWLEDGED' : 'PENDING',
+        feedback: rework ? 'Please redo questions 3 and 4 and show your working.' : null,
+        reviewedById: reviewed ? hw.teacherId : null,
+        reviewedAt: reviewed ? addDays(today, 0) : null,
+      });
+    }
+  }
+  if (submissionValues.length) await db.insert(t.homeworkSubmissions).values(submissionValues);
+  log(
+    `homework: ${homeworkValues.length}, assignments: ${assignmentValues.length}, homework tracking: ${submissionValues.length}`,
+  );
 
   /* --------------------------- announcements & events ---------------------- */
   await db.insert(t.announcements).values([
@@ -747,6 +779,8 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
     school2SectionId: section2.id,
     school2AdminUserId: admin2.id,
     school3AdminUserId: admin3.id,
+    studentUserId: aaravUser.id,
+    studentId: aarav.id,
     parentUserId: parentByFamily.get('F1')![0].userId,
     parentId: parentByFamily.get('F1')![0].id,
     otherParentUserId: parentByFamily.get('F5')![0].userId,
