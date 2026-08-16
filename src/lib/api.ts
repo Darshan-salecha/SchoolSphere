@@ -47,6 +47,18 @@ export function parseQuery<S extends ZodTypeAny>(req: Request, schema: S): outpu
 export const ok = <T>(data: T, init?: ResponseInit) => NextResponse.json(data, init);
 export const created = <T>(data: T) => NextResponse.json(data, { status: 201 });
 
+/**
+ * Redirect to a path on this same site.
+ *
+ * Deliberately emits a *relative* Location header. `NextResponse.redirect`
+ * requires an absolute URL, and behind a reverse proxy the only origin the
+ * server knows is its own bind address — so it would send the browser to
+ * http://0.0.0.0:3000/… instead of the public domain. A relative Location is
+ * resolved by the browser against the address bar, which is correct in every
+ * environment: localhost, the cloud domain, or any future host.
+ */
+export const seeOther = (path: string) => new NextResponse(null, { status: 303, headers: { Location: path } });
+
 export type Paginated<T> = { data: T[]; page: number; pageSize: number; total: number; totalPages: number };
 
 export function paginated<T>(data: T[], total: number, page: number, pageSize: number): Paginated<T> {
