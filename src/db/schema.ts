@@ -934,9 +934,12 @@ export const routes = pgTable(
     name: varchar('name', { length: 80 }).notNull(),
     busId: text('bus_id').references(() => buses.id, { onDelete: 'set null' }),
     driverId: text('driver_id').references(() => drivers.id, { onDelete: 'set null' }),
+    // A second crew member who attends the children. They may mark boarding on
+    // the trip but never start or end it — that stays with the driver.
+    conductorId: text('conductor_id').references(() => drivers.id, { onDelete: 'set null' }),
     isActive: boolean('is_active').notNull().default(true),
   },
-  (t) => [uniqueIndex('routes_unique').on(t.schoolId, t.name)],
+  (t) => [uniqueIndex('routes_unique').on(t.schoolId, t.name), index('routes_conductor_idx').on(t.schoolId, t.conductorId)],
 );
 
 export const routeStops = pgTable(
@@ -1268,7 +1271,8 @@ export type AttendanceStatus = (typeof attendanceStatusEnum.enumValues)[number];
 export const routesRelations = relations(routes, ({ one, many }) => ({
   school: one(schools, { fields: [routes.schoolId], references: [schools.id] }),
   bus: one(buses, { fields: [routes.busId], references: [buses.id] }),
-  driver: one(drivers, { fields: [routes.driverId], references: [drivers.id] }),
+  driver: one(drivers, { fields: [routes.driverId], references: [drivers.id], relationName: 'routeDriver' }),
+  conductor: one(drivers, { fields: [routes.conductorId], references: [drivers.id], relationName: 'routeConductor' }),
   stops: many(routeStops),
   assignments: many(studentTransport),
 }));
@@ -1279,7 +1283,8 @@ export const routeStopsRelations = relations(routeStops, ({ one }) => ({
 
 export const driversRelations = relations(drivers, ({ one, many }) => ({
   user: one(users, { fields: [drivers.userId], references: [users.id] }),
-  routes: many(routes),
+  routes: many(routes, { relationName: 'routeDriver' }),
+  attendedRoutes: many(routes, { relationName: 'routeConductor' }),
 }));
 
 export const busesRelations = relations(buses, ({ many }) => ({ routes: many(routes) }));
@@ -1512,3 +1517,60 @@ export type MessageThread = typeof messageThreads.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Certificate = typeof certificates.$inferSelect;
 export type Trip = typeof trips.$inferSelect;
+
+/* ------------------------------- LIBRARY -------------------------------- */
+
+export const loanStatusEnum = pgEnum('loan_status', ['ISSUED', 'RETURNED', 'OVERDUE', 'LOST']);
+
+export const libraryBooks = pgTable(
+  'library_books',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    title: varchar('title', { length: 200 }).notNull(),
+    author: varchar('author', { length: 160 }),
+    isbn: varchar('isbn', { length: 20 }),
+    category: varchar('category', { length: 60 }),
+    publisher: varchar('publisher', { length: 160 }),
+    shelf: varchar('shelf', { length: 40 }),
+    // Copies held, not copies available — availability is derived from open loans
+    // so the two can never disagree.
+    totalCopies: integer('total_copies').notNull().default(1),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('library_books_title_idx').on(t.schoolId, t.title),
+    uniqueIndex('library_books_isbn_unique').on(t.schoolId, t.isbn),
+  ],
+);
+
+export const libraryLoans = pgTable(
+  'library_loans',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    bookId: text('book_id').notNull().references(() => libraryBooks.id, { onDelete: 'restrict' }),
+    studentId: text('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+    issuedById: text('issued_by_id').references(() => users.id, { onDelete: 'set null' }),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    dueDate: date('due_date').notNull(),
+    returnedAt: timestamp('returned_at', { withTimezone: true }),
+    fineAmount: integer('fine_amount').notNull().default(0),
+    status: loanStatusEnum('status').notNull().default('ISSUED'),
+    note: varchar('note', { length: 200 }),
+  },
+  (t) => [
+    index('library_loans_student_idx').on(t.schoolId, t.studentId, t.status),
+    index('library_loans_book_idx').on(t.schoolId, t.bookId, t.status),
+  ],
+);
+
+export const libraryBooksRelations = relations(libraryBooks, ({ many }) => ({ loans: many(libraryLoans) }));
+
+export const libraryLoansRelations = relations(libraryLoans, ({ one }) => ({
+  book: one(libraryBooks, { fields: [libraryLoans.bookId], references: [libraryBooks.id] }),
+  student: one(students, { fields: [libraryLoans.studentId], references: [students.id] }),
+}));
+
+export type LibraryBook = typeof libraryBooks.$inferSelect;
+export type LibraryLoan = typeof libraryLoans.$inferSelect;

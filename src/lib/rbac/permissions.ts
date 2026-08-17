@@ -65,6 +65,10 @@ export const PERMISSIONS = {
   'leave.request': ['Leave', 'Submit leave requests'],
   'leave.approve': ['Leave', 'Approve leave requests'],
 
+  // library
+  'library.view': ['Library', 'View the catalogue and loans'],
+  'library.manage': ['Library', 'Add books, issue and return'],
+
   // reporting
   'reports.view': ['Reports', 'View reports'],
   'documents.view': ['Documents', 'View documents'],

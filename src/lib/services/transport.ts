@@ -63,6 +63,30 @@ export async function activeTrip(schoolId: string, driverId: string) {
 }
 
 /**
+ * The trip a crew member may act on, and in what capacity.
+ *
+ * A driver is bound to the trip they started. A conductor is bound to the
+ * *route* they attend, so they can mark children on whichever trip the driver
+ * currently has open — which is exactly how a two-person bus works, and why
+ * boarding cannot simply be keyed off `trips.driverId`.
+ */
+export async function crewTrip(schoolId: string, crewId: string) {
+  const asDriver = await activeTrip(schoolId, crewId);
+  if (asDriver) return { trip: asDriver, role: 'DRIVER' as const };
+
+  const attended = await db.query.routes.findFirst({
+    where: and(eq(t.routes.schoolId, schoolId), eq(t.routes.conductorId, crewId)),
+  });
+  if (!attended) return null;
+
+  const trip = await db.query.trips.findFirst({
+    where: and(eq(t.trips.schoolId, schoolId), eq(t.trips.routeId, attended.id), eq(t.trips.isActive, true)),
+    with: { route: { with: { bus: true } }, driver: { with: { user: { columns: { name: true } } } } },
+  });
+  return trip ? { trip, role: 'CONDUCTOR' as const } : null;
+}
+
+/**
  * Opening a trip implicitly closes any earlier one for the same driver. A phone
  * that lost signal mid-round leaves an orphan trip behind; without this,
  * parents would see two markers for one bus.
@@ -342,8 +366,9 @@ export async function recordBoarding(input: {
   note?: string | null;
 }) {
   const { schoolId, driverId, studentId, type } = input;
-  const trip = await activeTrip(schoolId, driverId);
-  if (!trip) throw conflict('Start a trip before marking students.');
+  const crew = await crewTrip(schoolId, driverId);
+  if (!crew) throw conflict('There is no trip in progress on your route.');
+  const { trip } = crew;
 
   // The child must actually be assigned to the route being driven.
   const assignment = await db.query.studentTransport.findFirst({

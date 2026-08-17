@@ -24,6 +24,12 @@ npm run db:push    # apply the schema
 npm run db:seed    # realistic demo data
 ```
 
+Already seeded and want the newer demo accounts, or just a clean slate?
+
+```bash
+npm run db:reset   # drops the schema, re-applies it, re-seeds (DEMO_MODE only)
+```
+
 If you'd rather use migration files than `db:push`:
 
 ```bash
@@ -44,10 +50,16 @@ Every staff account uses the password **`Password123!`**.
 | Class Teacher (5-A) | `/login` | `meera.iyer@dpa.edu` |
 | Subject Teacher | `/login` | `rohit.verma@dpa.edu` |
 | Student | `/login` | `aarav.sharma@dpa.edu` |
+| Bus driver | `/login` | `9860000001` (mobile, not email) |
+| Bus conductor | `/login` | `9870000011` (mobile) |
+| Staff | `/login` | `neha.kulkarni@dpa.edu` |
+| Platform Support | `/login` | `support@schoolsphere.io` |
 | **Parent** | `/parent-login` | Delhi Public Academy + `9810000001` |
 | Second school (isolation test) | `/login` | `admin@sunrise.edu` |
 
-Parents sign in with **school + mobile number + OTP**. In demo mode the code is shown on screen and printed to the server console; in production it goes through the SMS provider.
+Want a guided tour of each interface — including the driver console and live bus tracking? See **[DEMO.md](./DEMO.md)**.
+
+Staff sign in with an email address *or* a mobile number: bus crew are hired without school email, so an email-only login would lock them out of their own console. Parents sign in with **school + mobile number + OTP**. In demo mode the code is shown on screen and printed to the server console; in production it goes through the SMS provider.
 
 Sign in as `admin@sunrise.edu` to confirm for yourself that no data from Delhi Public Academy is reachable.
 

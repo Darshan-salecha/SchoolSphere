@@ -8,6 +8,9 @@ import { forbidden } from '@/lib/errors';
 export const POST = handler(async (req: Request) => {
   const session = await requireSchoolContext('transport.trip.operate');
   if (!session.driverId) throw forbidden('Only a driver can start a trip.');
+  if (session.roles.includes('CONDUCTOR') && !session.roles.includes('DRIVER')) {
+    throw forbidden('Only the driver can start a trip. You can mark children once it is under way.');
+  }
   const input = await parseBody(req, tripStartSchema);
 
   const state = await startTrip({
@@ -23,6 +26,9 @@ export const POST = handler(async (req: Request) => {
 export const DELETE = handler(async () => {
   const session = await requireSchoolContext('transport.trip.operate');
   if (!session.driverId) throw forbidden('Only a driver can end a trip.');
+  if (session.roles.includes('CONDUCTOR') && !session.roles.includes('DRIVER')) {
+    throw forbidden('Only the driver can end a trip.');
+  }
 
   const state = await endTrip({ schoolId: session.schoolId, driverId: session.driverId });
   await recordAudit({ session, action: 'trip.completed', entity: 'Trip', entityId: state.tripId });

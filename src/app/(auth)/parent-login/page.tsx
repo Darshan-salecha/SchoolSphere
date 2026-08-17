@@ -27,6 +27,14 @@ export default async function ParentLoginPage() {
         <p className="mt-1 text-sm text-slate-500">
           Use the mobile number your child&apos;s school has on record. We&apos;ll text you a one-time code.
         </p>
+        <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+          This screen is for <strong>parents and guardians</strong> only. Teachers, staff and bus crew — including
+          drivers and conductors who sign in with a mobile number — use{' '}
+          <Link href="/login" className="font-medium text-brand-600 hover:underline">
+            staff sign-in
+          </Link>{' '}
+          with a password instead.
+        </p>
       </div>
       <div className="card p-6">
         <ParentLoginForm schools={schools} />

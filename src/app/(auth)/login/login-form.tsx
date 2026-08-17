@@ -7,7 +7,7 @@ import { api, ApiRequestError } from '@/lib/client';
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,7 +17,7 @@ export function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post<{ redirectTo: string }>('/api/auth/login', { email, password });
+      const res = await api.post<{ redirectTo: string }>('/api/auth/login', { identifier, password });
       router.push(res.redirectTo);
       router.refresh();
     } catch (err) {
@@ -33,13 +33,13 @@ export function LoginForm() {
           {error}
         </div>
       )}
-      <Field label="Email address" required>
+      <Field label="Email or mobile number" required hint="Drivers and conductors sign in with their mobile number.">
         <Input
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@school.edu"
+          type="text"
+          autoComplete="username"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          placeholder="you@school.edu or 9860000001"
           required
         />
       </Field>

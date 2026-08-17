@@ -22,7 +22,8 @@
     "docker:up": "docker-compose -f docker-compose.prod.yml up -d",
     "docker:down": "docker-compose -f docker-compose.prod.yml down",
     "docker:logs": "docker-compose -f docker-compose.prod.yml logs -f app",
-    "create:admin": "node scripts/create-admin.mjs"
+    "create:admin": "node scripts/create-admin.mjs",
+    "db:reset": "node scripts/reset.mjs && npm run db:push && npm run db:seed"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

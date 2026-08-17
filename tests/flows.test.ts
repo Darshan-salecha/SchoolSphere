@@ -146,8 +146,15 @@ describe('school onboarding', () => {
 describe('attendance notifications', () => {
   it('notifies only the guardians of the absent student', async () => {
     const student = fx.students[0];
+    // Derived from the links rather than hardcoded: this child has a father, a
+    // mother and a limited-access grandparent, and the count is free to grow.
     const guardians = await guardianUserIds(fx.schoolId, [student.id]);
-    expect(guardians.length).toBe(2); // father and mother
+    const links = await db
+      .select()
+      .from(t.studentParents)
+      .where(and(eq(t.studentParents.schoolId, fx.schoolId), eq(t.studentParents.studentId, student.id)));
+    expect(guardians.length).toBe(links.length);
+    expect(guardians.length).toBeGreaterThanOrEqual(2);
 
     await notify({
       schoolId: fx.schoolId,
@@ -161,7 +168,7 @@ describe('attendance notifications', () => {
       .select()
       .from(t.notifications)
       .where(and(eq(t.notifications.schoolId, fx.schoolId), eq(t.notifications.type, 'ATTENDANCE')));
-    expect(delivered.length).toBe(2);
+    expect(delivered.length).toBe(guardians.length);
     expect(delivered.every((n) => guardians.includes(n.userId))).toBe(true);
 
     // Nobody outside that household received it.

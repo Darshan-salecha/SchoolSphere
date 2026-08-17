@@ -16,7 +16,33 @@ import type { SessionUser } from '@/lib/auth/session';
  */
 const WIDE_ROLES = ['SCHOOL_ADMIN', 'PRINCIPAL'];
 
+/**
+ * Privileged access: may write across the whole school, transfer a student,
+ * enrol, link guardians, and audit any conversation. Deliberately only two roles.
+ */
 export const hasSchoolWideAccess = (session: SessionUser) => session.roles.some((r) => WIDE_ROLES.includes(r));
+
+/**
+ * School-wide *read* of the student directory.
+ *
+ * Separate from `hasSchoolWideAccess` on purpose. A receptionist needs to look
+ * up any child in the school to handle a gate pass or an early pickup, but must
+ * never be able to enrol one — so the read predicate is wider than the write
+ * predicate, and the two must not be conflated.
+ *
+ * This is also a bug fix: non-teaching staff previously fell through to the
+ * teacher branch, found no class assignments, and were handed an empty list.
+ * They held `students.view` and saw nothing, which reads as a broken page
+ * rather than as a permission boundary.
+ */
+export function hasSchoolWideRead(session: SessionUser) {
+  if (hasSchoolWideAccess(session)) return true;
+  // Guardians and students are scoped to themselves, never to the directory.
+  if (session.parentId || session.studentId) return false;
+  // A teacher is scoped to their own classes even though they can view students.
+  if (session.teacherId) return false;
+  return session.permissions.includes('students.view');
+}
 
 /** Section ids this user may read. `null` means "every section in the school". */
 export async function accessibleSectionIds(session: SessionUser): Promise<string[] | null> {
@@ -122,7 +148,7 @@ export async function assertCanViewStudent(session: SessionUser, studentId: stri
   });
   if (!student) throw forbidden('You are not authorised to view this student.');
 
-  if (hasSchoolWideAccess(session)) return student;
+  if (hasSchoolWideRead(session)) return student;
   if (session.parentId) {
     await assertParentOwnsStudent(session, studentId);
     return student;
@@ -141,7 +167,7 @@ export async function assertCanViewStudent(session: SessionUser, studentId: stri
 /** Students visible to the caller, already tenant- and role-scoped. */
 export async function visibleStudentIds(session: SessionUser): Promise<string[] | null> {
   if (!session.schoolId) throw forbidden();
-  if (hasSchoolWideAccess(session)) return null;
+  if (hasSchoolWideRead(session)) return null;
   if (session.parentId) {
     const rows = await db
       .select({ studentId: t.studentParents.studentId })

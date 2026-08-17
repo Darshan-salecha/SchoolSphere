@@ -20,7 +20,7 @@ export const POST = handler(async (req: Request) => {
     with: { user: { columns: { status: true } } },
   });
   if (!parent || parent.user.status === 'SUSPENDED') {
-    throw new AppError('Your mobile number is not registered with this school.', 404, 'NOT_ENROLLED');
+    throw new AppError("That mobile number is not registered as a parent at this school. If you are a teacher, staff member or bus crew, sign in with your password on the staff sign-in page instead.", 404, 'NOT_ENROLLED');
   }
 
   const demoCode = await issueOtp(schoolId, phone);

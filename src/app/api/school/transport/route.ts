@@ -83,10 +83,17 @@ export const POST = handler(async (req: Request) => {
     case 'route': {
       if (input.busId) assertSameSchool(await db.query.buses.findFirst({ where: eq(t.buses.id, input.busId) }), session.schoolId);
       if (input.driverId) assertSameSchool(await db.query.drivers.findFirst({ where: eq(t.drivers.id, input.driverId) }), session.schoolId);
+      if (input.conductorId) assertSameSchool(await db.query.drivers.findFirst({ where: eq(t.drivers.id, input.conductorId) }), session.schoolId);
 
       const [row] = await db
         .insert(t.routes)
-        .values({ schoolId: session.schoolId, name: input.name, busId: input.busId || null, driverId: input.driverId || null })
+        .values({
+          schoolId: session.schoolId,
+          name: input.name,
+          busId: input.busId || null,
+          driverId: input.driverId || null,
+          conductorId: input.conductorId || null,
+        })
         .returning();
       clearRouteCache();
       await recordAudit({ session, action: 'route.created', entity: 'TransportRoute', entityId: row.id, after: row });

@@ -3,14 +3,24 @@ import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const ACCOUNTS = [
+/** Every role in the permission matrix, so each interface is reachable. */
+const ACCOUNTS: [string, string][] = [
   ['Platform Super Admin', 'admin@schoolsphere.io'],
+  ['Platform Support', 'support@schoolsphere.io'],
   ['School Admin', 'admin@dpa.edu'],
   ['Principal', 'principal@dpa.edu'],
   ['Class Teacher (5-A)', 'meera.iyer@dpa.edu'],
-  ['Teacher', 'rohit.verma@dpa.edu'],
+  ['Subject Teacher', 'rohit.verma@dpa.edu'],
+  ['Staff — Receptionist', 'neha.kulkarni@dpa.edu'],
+  ['Staff — Accountant', 'sanjay.gupta@dpa.edu'],
+  ['Staff — Librarian', 'latha.krishnan@dpa.edu'],
   ['Student', 'aarav.sharma@dpa.edu'],
+  ['Bus driver — Route A', '9860000001'],
+  ['Bus driver — Route B', '9860000002'],
+  ['Bus conductor — Route A', '9870000011'],
   ['Second school admin', 'admin@sunrise.edu'],
+  ['Second school teacher', 'priya.shah@sunrise.edu'],
+  ['Suspended school admin', 'admin@stmarys.edu'],
 ];
 
 export function DemoAccounts() {
@@ -37,10 +47,22 @@ export function DemoAccounts() {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-xs text-slate-500">
-            Parents sign in at <span className="font-medium">/parent-login</span> — try school “Delhi Public Academy”
-            with mobile <code className="rounded bg-slate-100 px-1 py-0.5">9810000001</code>.
-          </p>
+          <div className="mt-3 space-y-2 text-xs text-slate-500">
+            <p>
+              Bus crew sign in with the mobile number shown and land on the driver console at{' '}
+              <span className="font-medium">/driver</span>. The conductor can mark children on and off, but only the
+              driver may start or end a trip.
+            </p>
+            <p>
+              Parents sign in at <span className="font-medium">/parent-login</span> — “Delhi Public Academy” with{' '}
+              <code className="rounded bg-slate-100 px-1 py-0.5">9810000001</code> (two children), or{' '}
+              <code className="rounded bg-slate-100 px-1 py-0.5">9812000001</code> for a limited-access grandparent.
+            </p>
+            <p>
+              <span className="font-medium">admin@stmarys.edu</span> belongs to a suspended school — it is here so you
+              can confirm the lockout works.
+            </p>
+          </div>
         </div>
       )}
     </div>

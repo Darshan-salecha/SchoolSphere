@@ -60,14 +60,12 @@ describe('trip lifecycle', () => {
   });
 
   it('refuses a driver who is not assigned to the route', async () => {
-    const otherDriver = await db.query.drivers.findFirst({
-      where: and(eq(t.drivers.schoolId, fx.schoolId), eq(t.drivers.id, driverId)),
-    });
-    const someoneElse = await db.query.drivers.findFirst({
-      where: and(eq(t.drivers.schoolId, fx.schoolId)),
-      offset: 1,
-    });
-    expect(someoneElse!.id).not.toBe(otherDriver!.id);
+    // Chosen by exclusion rather than by row order, so seeding another crew
+    // member cannot accidentally pick the very driver who owns this route.
+    const crew = await db.select().from(t.drivers).where(eq(t.drivers.schoolId, fx.schoolId));
+    const someoneElse = crew.find((c) => c.id !== driverId);
+    expect(someoneElse).toBeDefined();
+
     const err = await expectForbidden(() =>
       startTrip({ schoolId: fx.schoolId, driverId: someoneElse!.id, routeId, direction: 'PICKUP' }),
     );

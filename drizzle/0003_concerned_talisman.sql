@@ -1,0 +1,3 @@
+ALTER TABLE "transport_routes" ADD COLUMN "conductor_id" text;--> statement-breakpoint
+ALTER TABLE "transport_routes" ADD CONSTRAINT "transport_routes_conductor_id_drivers_id_fk" FOREIGN KEY ("conductor_id") REFERENCES "public"."drivers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "routes_conductor_idx" ON "transport_routes" USING btree ("school_id","conductor_id");

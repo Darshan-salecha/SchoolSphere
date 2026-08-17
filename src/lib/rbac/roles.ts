@@ -77,9 +77,20 @@ export const ROLE_DEFINITIONS: Record<
   },
   STAFF: {
     name: 'Staff',
-    description: 'Non-teaching staff with narrow, role-specific access.',
+    description: 'Non-teaching staff. The baseline is front-desk lookup; a designation adds to it.',
     isPlatform: false,
-    permissions: ['students.view', 'attendance.view', 'announcements.view', 'events.view', 'leave.request', 'documents.view'],
+    // A receptionist who cannot look up a parent's phone number cannot answer
+    // the phone, so directory read is part of the baseline rather than an extra.
+    permissions: [
+      'students.view',
+      'parents.view',
+      'attendance.view',
+      'announcements.view',
+      'events.view',
+      'timetable.view',
+      'leave.request',
+      'documents.view',
+    ],
   },
   PARENT: {
     name: 'Parent',
@@ -108,3 +119,26 @@ export const ROLE_DEFINITIONS: Record<
 };
 
 export const ROLE_KEYS = Object.keys(ROLE_DEFINITIONS) as RoleKeyString[];
+
+
+/**
+ * Extra permissions granted by a staff member's job title.
+ *
+ * Applied as explicit per-user grants when the record is created, so they show
+ * up in Users & roles and an admin can see and change exactly what a hire can
+ * do. The alternative — inventing a role per job title — would multiply the
+ * role enum every time a school invents a new one.
+ */
+export const STAFF_DESIGNATION_PERMISSIONS: Record<string, PermissionKey[]> = {
+  Accountant: ['fees.view', 'fees.collect', 'reports.view'],
+  Librarian: ['library.view', 'library.manage'],
+  Receptionist: ['announcements.create', 'attendance.view'],
+  'Office staff': ['documents.manage', 'reports.view'],
+  Security: [],
+  'Lab assistant': [],
+  Maintenance: [],
+  Other: [],
+};
+
+export const staffDefaultsFor = (designation?: string | null): PermissionKey[] =>
+  STAFF_DESIGNATION_PERMISSIONS[designation ?? ''] ?? [];

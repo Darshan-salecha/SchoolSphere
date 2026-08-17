@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { Db } from '@/db';
 import * as t from '@/db/schema';
 import { gradeFor } from '@/lib/utils';
+import { staffDefaultsFor } from '@/lib/rbac/roles';
 import { DEMO_PASSWORD, FAMILIES, FEE_CATEGORIES, PERIOD_TEMPLATE, STAFF, STUDENTS, SUBJECT_SET, TEACHERS } from './seed-data';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -20,6 +21,17 @@ function rng(seed: number) {
 
 export async function seed(db: Db, opts: { log?: boolean } = {}) {
   const log = (m: string) => opts.log !== false && console.log(`  ${m}`);
+
+  // Seeding twice would violate the unique constraints it deliberately relies
+  // on. Fail with the fix rather than a Postgres error nobody can act on.
+  const existing = await db.select({ id: t.schools.id }).from(t.schools).limit(1);
+  if (existing.length) {
+    throw new Error(
+      'This database already contains data. To rebuild the demo from scratch run:\n' +
+        '  npm run db:reset\n' +
+        '(which drops the schema, re-applies it and re-seeds).',
+    );
+  }
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const today = new Date();
 
@@ -152,12 +164,23 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
   }
   log(`teachers: ${teacherRecords.length}`);
 
+  const staffUserIds: string[] = [];
   for (const spec of STAFF) {
     const [u] = await db
       .insert(t.users)
       .values({ schoolId: school.id, name: spec.name, email: spec.email, phone: spec.phone, passwordHash })
       .returning();
     await db.insert(t.userRoles).values({ userId: u.id, role: 'STAFF' });
+    staffUserIds.push(u.id);
+
+    // Job-title defaults, exactly as the create-staff endpoint applies them.
+    const extras = staffDefaultsFor(spec.designation);
+    if (extras.length) {
+      await db
+        .insert(t.userPermissions)
+        .values(extras.map((permissionKey) => ({ userId: u.id, permissionKey, granted: true })))
+        .onConflictDoNothing();
+    }
     await db.insert(t.staff).values({
       schoolId: school.id,
       userId: u.id,
@@ -600,9 +623,12 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
     .returning();
 
   const driverSpecs = [
-    { name: 'Balbir Singh', phone: '9860000001', license: 'DL-0420110012345' },
-    { name: 'Mohan Yadav', phone: '9860000002', license: 'DL-0420110012346' },
-    { name: 'Iqbal Hussain', phone: '9860000003', license: 'DL-0420110012347' },
+    { name: 'Balbir Singh', phone: '9860000001', license: 'DL-0420110012345', role: 'DRIVER' as const },
+    { name: 'Mohan Yadav', phone: '9860000002', license: 'DL-0420110012346', role: 'DRIVER' as const },
+    { name: 'Iqbal Hussain', phone: '9860000003', license: 'DL-0420110012347', role: 'DRIVER' as const },
+    // Attends Route A alongside Balbir. A conductor marks children on and off
+    // but never starts the trip, so both halves of the crew are demonstrable.
+    { name: 'Shanti Devi', phone: '9870000011', license: 'CND-0420110099001', role: 'CONDUCTOR' as const },
   ];
   const driverRows: (typeof t.drivers.$inferSelect)[] = [];
   for (const spec of driverSpecs) {
@@ -610,13 +636,21 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
       .insert(t.users)
       .values({ schoolId: school.id, name: spec.name, phone: spec.phone, passwordHash })
       .returning();
-    await db.insert(t.userRoles).values({ userId: u.id, role: 'DRIVER' });
+    await db.insert(t.userRoles).values({ userId: u.id, role: spec.role });
     const [driver] = await db
       .insert(t.drivers)
-      .values({ schoolId: school.id, userId: u.id, licenseNumber: spec.license, phone: spec.phone, licenseExpiry: iso(addDays(today, 400)) })
+      .values({
+        schoolId: school.id,
+        userId: u.id,
+        licenseNumber: spec.license,
+        phone: spec.phone,
+        role: spec.role,
+        licenseExpiry: iso(addDays(today, 400)),
+      })
       .returning();
     driverRows.push(driver);
   }
+  const conductorRow = driverRows.find((d) => d.role === 'CONDUCTOR')!;
 
   const routeSpecs = [
     { name: 'Route A — Green Park', stops: ['Green Park Metro', 'Hauz Khas Market', 'Safdarjung Enclave', 'School gate'] },
@@ -627,7 +661,14 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
   for (const [i, spec] of routeSpecs.entries()) {
     const [route] = await db
       .insert(t.routes)
-      .values({ schoolId: school.id, name: spec.name, busId: busRows[i].id, driverId: driverRows[i].id })
+      .values({
+        schoolId: school.id,
+        name: spec.name,
+        busId: busRows[i].id,
+        driverId: driverRows[i].id,
+        // Only the first route carries a conductor.
+        conductorId: i === 0 ? conductorRow.id : null,
+      })
       .returning();
     for (const [j, stopName] of spec.stops.entries()) {
       const [stop] = await db
@@ -759,6 +800,74 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
     .returning();
   await db.insert(t.userRoles).values({ userId: admin3.id, role: 'SCHOOL_ADMIN' });
 
+  // A grandparent with LIMITED access to Aarav — enough to see attendance and
+  // notices, deliberately not the full guardian grant.
+  const [limitedUser] = await db
+    .insert(t.users)
+    .values({ schoolId: school.id, name: 'Kamla Sharma', phone: '9812000001' })
+    .returning();
+  await db.insert(t.userRoles).values({ userId: limitedUser.id, role: 'PARENT' });
+  const [limitedParent] = await db
+    .insert(t.parents)
+    .values({ schoolId: school.id, userId: limitedUser.id, phone: '9812000001', occupation: 'Retired' })
+    .returning();
+  await db.insert(t.studentParents).values({
+    schoolId: school.id,
+    studentId: studentRecords[0].id,
+    parentId: limitedParent.id,
+    relation: 'GUARDIAN',
+    access: 'LIMITED',
+  });
+
+  /* ------------------------------- library --------------------------------- */
+  const bookRows = await db
+    .insert(t.libraryBooks)
+    .values([
+      { schoolId: school.id, title: 'The Jungle Book', author: 'Rudyard Kipling', category: 'Fiction', shelf: 'A-01', totalCopies: 4, isbn: '9780141325295' },
+      { schoolId: school.id, title: 'A Brief History of Time', author: 'Stephen Hawking', category: 'Science', shelf: 'C-14', totalCopies: 2, isbn: '9780553380163' },
+      { schoolId: school.id, title: 'Malgudi Days', author: 'R. K. Narayan', category: 'Fiction', shelf: 'A-04', totalCopies: 3, isbn: '9780143039655' },
+      { schoolId: school.id, title: 'Wings of Fire', author: 'A. P. J. Abdul Kalam', category: 'Biography', shelf: 'B-07', totalCopies: 5, isbn: '9788173711466' },
+      { schoolId: school.id, title: 'The Story of My Experiments with Truth', author: 'M. K. Gandhi', category: 'Biography', shelf: 'B-02', totalCopies: 2, isbn: '9780807059098' },
+      { schoolId: school.id, title: 'Panchatantra', author: 'Vishnu Sharma', category: 'Folklore', shelf: 'A-09', totalCopies: 6, isbn: '9788126415748' },
+    ])
+    .returning();
+
+  await db.insert(t.libraryLoans).values([
+    // On time.
+    {
+      schoolId: school.id,
+      bookId: bookRows[0].id,
+      studentId: studentRecords[0].id,
+      issuedById: staffUserIds[2] ?? adminUser.id,
+      issuedAt: addDays(today, -4),
+      dueDate: iso(addDays(today, 10)),
+      status: 'ISSUED',
+    },
+    // Deliberately overdue, so the fine and the red badge are visible.
+    {
+      schoolId: school.id,
+      bookId: bookRows[1].id,
+      studentId: studentRecords[4].id,
+      issuedById: staffUserIds[2] ?? adminUser.id,
+      issuedAt: addDays(today, -25),
+      dueDate: iso(addDays(today, -6)),
+      status: 'OVERDUE',
+    },
+    // Already back, with the fine frozen at what was owed that day.
+    {
+      schoolId: school.id,
+      bookId: bookRows[3].id,
+      studentId: studentRecords[2].id,
+      issuedById: staffUserIds[2] ?? adminUser.id,
+      issuedAt: addDays(today, -40),
+      dueDate: iso(addDays(today, -26)),
+      returnedAt: addDays(today, -24),
+      fineAmount: 400,
+      status: 'RETURNED',
+    },
+  ]);
+  log(`library: ${bookRows.length} titles`);
+
   /* ------------------- phase 4-10 demo content ---------------------------- */
 
   // A sibling concession on the second child of family F1.
@@ -884,6 +993,14 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
     routeId: routeSpecs.length ? (await db.query.routes.findFirst({ where: eq(t.routes.schoolId, school.id) }))!.id : '',
     threadId: thread.id,
     concessionStudentId: studentRecords[1].id,
+    conductorId: conductorRow.id,
+    staffUserIds,
+    librarianUserId: staffUserIds[2],
+    accountantUserId: staffUserIds[1],
+    receptionistUserId: staffUserIds[0],
+    bookIds: bookRows.map((b) => b.id),
+    conductorUserId: conductorRow.userId,
+    limitedParentUserId: limitedUser.id,
   };
 }
 

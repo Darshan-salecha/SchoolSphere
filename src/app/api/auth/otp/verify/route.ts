@@ -14,7 +14,7 @@ export const POST = handler(async (req: Request) => {
   const parent = await db.query.parents.findFirst({
     where: and(eq(t.parents.schoolId, schoolId), eq(t.parents.phone, phone), isNull(t.parents.deletedAt)),
   });
-  if (!parent) throw new AppError('Your mobile number is not registered with this school.', 404, 'NOT_ENROLLED');
+  if (!parent) throw new AppError("That mobile number is not registered as a parent at this school. If you are a teacher, staff member or bus crew, sign in with your password on the staff sign-in page instead.", 404, 'NOT_ENROLLED');
 
   await verifyOtp(schoolId, phone, code);
 

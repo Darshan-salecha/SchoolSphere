@@ -7,6 +7,7 @@ import { staffSchema } from '@/lib/validation/schemas';
 import { hashPassword } from '@/lib/auth/password';
 import { conflict } from '@/lib/errors';
 import { recordAudit } from '@/lib/audit';
+import { staffDefaultsFor } from '@/lib/rbac/roles';
 
 export const POST = handler(async (req: Request) => {
   const session = await requireSchoolContext('staff.manage');
@@ -23,6 +24,16 @@ export const POST = handler(async (req: Request) => {
       .values({ schoolId: session.schoolId, name: input.name, email, phone: input.phone, passwordHash })
       .returning();
     await tx.insert(t.userRoles).values({ userId: user.id, role: 'STAFF' });
+
+    // The job title decides what they can actually do. Stored as visible grants
+    // so an admin can review and change them in Users & roles.
+    const extras = staffDefaultsFor(input.designation);
+    if (extras.length) {
+      await tx
+        .insert(t.userPermissions)
+        .values(extras.map((permissionKey) => ({ userId: user.id, permissionKey, granted: true })))
+        .onConflictDoNothing();
+    }
     const [staffRow] = await tx
       .insert(t.staff)
       .values({

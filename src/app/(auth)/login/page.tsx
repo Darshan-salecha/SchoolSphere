@@ -15,13 +15,16 @@ export default async function LoginPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Sign in</h1>
-        <p className="mt-1 text-sm text-slate-500">For platform admins, school staff, teachers and students.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          For platform admins, school staff, teachers, students and bus crew. Drivers and conductors sign in with their
+          mobile number and a password.
+        </p>
       </div>
       <div className="card p-6">
         <LoginForm />
       </div>
       <p className="text-center text-sm text-slate-500">
-        Are you a parent?{' '}
+        Are you a parent or guardian?{' '}
         <Link href="/parent-login" className="font-medium text-brand-600 hover:underline">
           Sign in with your mobile number
         </Link>

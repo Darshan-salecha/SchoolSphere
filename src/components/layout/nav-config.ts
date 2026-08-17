@@ -58,6 +58,7 @@ export const SCHOOL_NAV: NavGroup[] = [
     items: [
       { label: 'Fees', href: '/school/fees', icon: 'Wallet', permission: 'fees.view' },
       { label: 'Transport', href: '/school/transport', icon: 'Bus', permission: 'transport.view' },
+      { label: 'Library', href: '/school/library', icon: 'Library', permission: 'library.view' },
     ],
   },
   {
@@ -100,6 +101,7 @@ export const PARENT_NAV: NavGroup[] = [
       { label: 'Events', href: '/parent/events', icon: 'CalendarDays' },
       { label: 'Messages', href: '/parent/messages', icon: 'MessagesSquare' },
       { label: 'Documents', href: '/parent/documents', icon: 'FolderOpen' },
+      { label: 'Library', href: '/parent/library', icon: 'Library' },
       { label: 'Leave requests', href: '/parent/leave', icon: 'CalendarOff' },
     ],
   },

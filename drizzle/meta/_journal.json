@@ -22,6 +22,20 @@
       "when": 1786896152846,
       "tag": "0002_panoramic_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786962720100,
+      "tag": "0003_concerned_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786963921438,
+      "tag": "0004_broken_william_stryker",
+      "breakpoints": true
     }
   ]
 }

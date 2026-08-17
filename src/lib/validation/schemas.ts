@@ -3,7 +3,9 @@ import { cuid, dateSchema, emailSchema, phoneSchema } from './common';
 
 /* ---------------------------------- auth --------------------------------- */
 export const loginSchema = z.object({
-  email: z.string().trim().min(1, 'Enter your email'),
+  // Email or 10-digit mobile. Drivers and conductors are hired without a school
+  // email address, so requiring one would lock them out of their own console.
+  identifier: z.string().trim().min(1, 'Enter your email or mobile number'),
   password: z.string().min(1, 'Enter your password'),
 });
 
@@ -378,6 +380,7 @@ export const routeSchema = z.object({
   name: z.string().trim().min(2, 'Route name is required'),
   busId: z.string().optional().nullable(),
   driverId: z.string().optional().nullable(),
+  conductorId: z.string().optional().nullable(),
 });
 
 export const routeStopSchema = z.object({
@@ -435,4 +438,26 @@ export const certificateSchema = z.object({
   studentId: cuid,
   type: z.enum(['BONAFIDE', 'TRANSFER', 'CHARACTER', 'ACHIEVEMENT', 'PARTICIPATION']),
   note: z.string().trim().max(300).optional().or(z.literal('')),
+});
+
+/* -------------------------------- library -------------------------------- */
+export const bookSchema = z.object({
+  title: z.string().trim().min(2, 'Title is required'),
+  author: z.string().trim().optional().or(z.literal('')),
+  isbn: z.string().trim().max(20).optional().or(z.literal('')),
+  category: z.string().trim().optional().or(z.literal('')),
+  publisher: z.string().trim().optional().or(z.literal('')),
+  shelf: z.string().trim().optional().or(z.literal('')),
+  totalCopies: z.coerce.number().int().min(1).max(999).default(1),
+});
+
+export const issueBookSchema = z.object({
+  bookId: cuid,
+  studentId: cuid,
+  dueDate: dateSchema.optional(),
+});
+
+export const returnBookSchema = z.object({
+  loanId: cuid,
+  lost: z.boolean().default(false),
 });
