@@ -9,6 +9,7 @@ import { paginationSchema } from '@/lib/validation/common';
 import { assertSameSchool } from '@/lib/tenant';
 import { assertCanAccessSection, hasSchoolWideAccess, isClassTeacherOf } from '@/lib/scope';
 import { findPossibleDuplicates, listStudents, nextRollNumber, requireCurrentYear } from '@/lib/services/students';
+import { assertStudentCapacity } from '@/lib/services/plan-limits';
 import { recordAudit } from '@/lib/audit';
 import { forbidden } from '@/lib/errors';
 
@@ -33,6 +34,7 @@ export const POST = handler(async (req: Request) => {
     if (!(await isClassTeacherOf(session, section.id))) throw forbidden('Only the class teacher can enrol into this class.');
   }
 
+  await assertStudentCapacity(session.schoolId);
   const year = await requireCurrentYear(session.schoolId);
   const duplicates = await findPossibleDuplicates(session.schoolId, input);
   if (duplicates.some((d) => d.admissionNumber === input.admissionNumber)) {

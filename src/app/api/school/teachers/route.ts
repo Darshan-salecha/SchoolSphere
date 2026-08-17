@@ -8,6 +8,7 @@ import { paginationSchema, skipTake } from '@/lib/validation/common';
 import { hashPassword } from '@/lib/auth/password';
 import { assertSameSchool } from '@/lib/tenant';
 import { conflict } from '@/lib/errors';
+import { assertTeacherCapacity } from '@/lib/services/plan-limits';
 import { recordAudit } from '@/lib/audit';
 
 export const GET = handler(async (req: Request) => {
@@ -50,6 +51,8 @@ export const GET = handler(async (req: Request) => {
 export const POST = handler(async (req: Request) => {
   const session = await requireSchoolContext('teachers.manage');
   const input = await parseBody(req, teacherSchema);
+
+  await assertTeacherCapacity(session.schoolId);
 
   const email = input.email.toLowerCase();
   if (await db.query.users.findFirst({ where: eq(t.users.email, email) })) {

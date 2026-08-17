@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { SCHOOL_NAV } from '@/components/layout/nav-config';
 import { filterNav, requirePageSession } from '@/lib/page-guards';
+import { unreadNotifications } from '@/lib/services/messaging';
 import { landingPath, roleLabel } from '@/lib/auth/landing';
 
 export default async function SchoolLayout({ children }: { children: React.ReactNode }) {
@@ -13,10 +14,12 @@ export default async function SchoolLayout({ children }: { children: React.React
 
   const nav = SCHOOL_NAV.map((g) => ({ ...g, items: filterNav(session, g.items) })).filter((g) => g.items.length);
 
+  const unread = await unreadNotifications(session.schoolId, session.id);
+
   return (
     <AppShell
       nav={nav}
-      user={{ name: session.name, roleLabel: roleLabel(session) }}
+      user={{ name: session.name, roleLabel: roleLabel(session), unread }}
       brand={{ title: session.schoolName ?? 'School', subtitle: session.schoolCode, href: '/school' }}
     >
       {children}

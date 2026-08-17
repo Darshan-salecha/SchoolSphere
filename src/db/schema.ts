@@ -983,8 +983,20 @@ export const trips = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     date: date('date').notNull(),
+    // Current fix. Denormalised onto the trip so a parent opening the map gets
+    // the bus position in one read instead of scanning the breadcrumb table.
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    accuracyM: doublePrecision('accuracy_m'),
+    heading: doublePrecision('heading'),
+    speedMps: doublePrecision('speed_mps'),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    isActive: boolean('is_active').notNull().default(true),
   },
-  (t) => [index('trips_day_idx').on(t.schoolId, t.date, t.status)],
+  (t) => [
+    index('trips_day_idx').on(t.schoolId, t.date, t.status),
+    index('trips_active_idx').on(t.schoolId, t.isActive),
+  ],
 );
 
 export const gpsLocations = pgTable(
@@ -1274,6 +1286,9 @@ export const busesRelations = relations(buses, ({ many }) => ({ routes: many(rou
 
 export const studentFeesRelations = relations(studentFees, ({ one, many }) => ({
   student: one(students, { fields: [studentFees.studentId], references: [students.id] }),
+  academicYear: one(academicYears, { fields: [studentFees.academicYearId], references: [academicYears.id] }),
+  feeStructure: one(feeStructures, { fields: [studentFees.feeStructureId], references: [feeStructures.id] }),
+  concessions: many(feeConcessions),
   payments: many(payments),
 }));
 
@@ -1284,3 +1299,216 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
 export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
   school: one(schools, { fields: [supportTickets.schoolId], references: [schools.id] }),
 }));
+
+/* ==========================================================================
+   PHASE 4-10 ADDITIONS
+   ========================================================================== */
+
+/* ------------------------------- FINANCE -------------------------------- */
+
+export const concessionTypeEnum = pgEnum('concession_type', [
+  'SCHOLARSHIP',
+  'SIBLING',
+  'STAFF_WARD',
+  'MERIT',
+  'NEED_BASED',
+  'OTHER',
+]);
+
+/** A standing reduction on a student's fees. Amount-or-percent, never both. */
+export const feeConcessions = pgTable(
+  'fee_concessions',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    studentId: text('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+    academicYearId: text('academic_year_id').notNull().references(() => academicYears.id, { onDelete: 'cascade' }),
+    type: concessionTypeEnum('type').notNull().default('OTHER'),
+    percent: integer('percent'),
+    amount: integer('amount'),
+    reason: varchar('reason', { length: 300 }),
+    approvedById: text('approved_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('fee_concessions_idx').on(t.schoolId, t.studentId)],
+);
+
+/** Every reminder sent, so escalation can tell what has already gone out. */
+export const feeReminders = pgTable(
+  'fee_reminders',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    studentFeeId: text('student_fee_id').notNull().references(() => studentFees.id, { onDelete: 'cascade' }),
+    stage: varchar('stage', { length: 20 }).notNull(), // BEFORE_DUE | ON_DUE | OVERDUE | ESCALATION
+    channels: text('channels').array().notNull().default(sql`ARRAY['IN_APP']::text[]`),
+    sentAt: createdAt(),
+  },
+  (t) => [uniqueIndex('fee_reminders_unique').on(t.studentFeeId, t.stage)],
+);
+
+/* ------------------------------ TRANSPORT ------------------------------- */
+
+/**
+ * Proximity notice ledger.
+ *
+ * The unique index is the deduplication: a bus circling the same block cannot
+ * ping a family twice for the same stage of the same trip.
+ */
+export const tripNotices = pgTable(
+  'trip_notices',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    tripId: text('trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+    studentId: text('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 12 }).notNull(), // NEARBY | ARRIVED
+    distanceM: integer('distance_m').notNull(),
+    etaSeconds: integer('eta_seconds').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('trip_notices_unique').on(t.tripId, t.studentId, t.kind)],
+);
+
+/* --------------------------- COMMUNICATION ------------------------------ */
+
+/**
+ * A conversation between a guardian and a member of staff, always about one
+ * student. Threads are never open-ended: the student is what authorises both
+ * participants to be in the room.
+ */
+export const messageThreads = pgTable(
+  'message_threads',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    studentId: text('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+    parentId: text('parent_id').notNull().references(() => parents.id, { onDelete: 'cascade' }),
+    staffUserId: text('staff_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    subject: varchar('subject', { length: 160 }).notNull(),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('message_threads_parent_idx').on(t.schoolId, t.parentId, t.lastMessageAt),
+    index('message_threads_staff_idx').on(t.schoolId, t.staffUserId, t.lastMessageAt),
+  ],
+);
+
+export const messages = pgTable(
+  'messages',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    threadId: text('thread_id').notNull().references(() => messageThreads.id, { onDelete: 'cascade' }),
+    senderUserId: text('sender_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('messages_thread_idx').on(t.threadId, t.createdAt)],
+);
+
+/* ----------------------------- CERTIFICATES ----------------------------- */
+
+export const certificates = pgTable(
+  'certificates',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    studentId: text('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 40 }).notNull(), // BONAFIDE | TRANSFER | CHARACTER | ACHIEVEMENT | PARTICIPATION
+    serialNumber: varchar('serial_number', { length: 40 }).notNull(),
+    body: text('body').notNull(),
+    issuedById: text('issued_by_id').references(() => users.id, { onDelete: 'set null' }),
+    issuedAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('certificates_serial_unique').on(t.schoolId, t.serialNumber),
+    index('certificates_student_idx').on(t.schoolId, t.studentId),
+  ],
+);
+
+/* -------------------------- PLATFORM BILLING ---------------------------- */
+
+export const platformInvoices = pgTable(
+  'platform_invoices',
+  {
+    id: id(),
+    schoolId: text('school_id').notNull().references(() => schools.id, { onDelete: 'cascade' }),
+    number: varchar('number', { length: 40 }).notNull().unique(),
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    amount: integer('amount').notNull(),
+    currency: varchar('currency', { length: 3 }).notNull().default('INR'),
+    status: varchar('status', { length: 20 }).notNull().default('DUE'), // DUE | PAID | VOID
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('platform_invoices_idx').on(t.schoolId, t.status)],
+);
+
+/* ------------------------- ADDITIONAL RELATIONS ------------------------- */
+
+export const tripsRelations = relations(trips, ({ one, many }) => ({
+  school: one(schools, { fields: [trips.schoolId], references: [schools.id] }),
+  route: one(routes, { fields: [trips.routeId], references: [routes.id] }),
+  bus: one(buses, { fields: [trips.busId], references: [buses.id] }),
+  driver: one(drivers, { fields: [trips.driverId], references: [drivers.id] }),
+  locations: many(gpsLocations),
+  events: many(busEvents),
+}));
+
+export const gpsLocationsRelations = relations(gpsLocations, ({ one }) => ({
+  trip: one(trips, { fields: [gpsLocations.tripId], references: [trips.id] }),
+}));
+
+export const busEventsRelations = relations(busEvents, ({ one }) => ({
+  trip: one(trips, { fields: [busEvents.tripId], references: [trips.id] }),
+  student: one(students, { fields: [busEvents.studentId], references: [students.id] }),
+  stop: one(routeStops, { fields: [busEvents.stopId], references: [routeStops.id] }),
+}));
+
+export const studentTransportRelations = relations(studentTransport, ({ one }) => ({
+  student: one(students, { fields: [studentTransport.studentId], references: [students.id] }),
+  route: one(routes, { fields: [studentTransport.routeId], references: [routes.id] }),
+  stop: one(routeStops, { fields: [studentTransport.stopId], references: [routeStops.id] }),
+}));
+
+export const messageThreadsRelations = relations(messageThreads, ({ one, many }) => ({
+  student: one(students, { fields: [messageThreads.studentId], references: [students.id] }),
+  parent: one(parents, { fields: [messageThreads.parentId], references: [parents.id] }),
+  staffUser: one(users, { fields: [messageThreads.staffUserId], references: [users.id] }),
+  messages: many(messages),
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  thread: one(messageThreads, { fields: [messages.threadId], references: [messageThreads.id] }),
+  sender: one(users, { fields: [messages.senderUserId], references: [users.id] }),
+}));
+
+export const feeConcessionsRelations = relations(feeConcessions, ({ one }) => ({
+  student: one(students, { fields: [feeConcessions.studentId], references: [students.id] }),
+}));
+
+export const certificatesRelations = relations(certificates, ({ one }) => ({
+  student: one(students, { fields: [certificates.studentId], references: [students.id] }),
+}));
+
+export const feeStructuresRelations = relations(feeStructures, ({ one, many }) => ({
+  academicYear: one(academicYears, { fields: [feeStructures.academicYearId], references: [academicYears.id] }),
+  class: one(classLevels, { fields: [feeStructures.classId], references: [classLevels.id] }),
+  items: many(feeStructureItems),
+}));
+
+export const feeStructureItemsRelations = relations(feeStructureItems, ({ one }) => ({
+  feeStructure: one(feeStructures, { fields: [feeStructureItems.feeStructureId], references: [feeStructures.id] }),
+  category: one(feeCategories, { fields: [feeStructureItems.categoryId], references: [feeCategories.id] }),
+}));
+
+export type FeeConcession = typeof feeConcessions.$inferSelect;
+export type MessageThread = typeof messageThreads.$inferSelect;
+export type Message = typeof messages.$inferSelect;
+export type Certificate = typeof certificates.$inferSelect;
+export type Trip = typeof trips.$inferSelect;

@@ -71,15 +71,41 @@ Suspending a school flips its status *and* revokes every live session, so users 
 
 ## What's built
 
-**Phase 1 — foundation.** Session auth (JWT in an httpOnly cookie, revocable server-side), parent OTP sign-in with expiry, attempt limits and rate limiting, multi-tenancy, RBAC, platform console (schools, plans, subscriptions, suspend/activate, audit, support), school onboarding and a progress-driven 13-step setup wizard.
+All ten phases are implemented.
 
-**Phase 2 — school administration.** Academic years, classes, sections, subjects, teachers with section/subject assignments, students with enrolment history, guardians, staff, per-user permission management, and a validate-then-commit CSV bulk import with duplicate detection.
+**Phase 1 — foundation.** Session auth (JWT in an httpOnly cookie, revocable server-side), parent OTP sign-in with expiry, attempt limits and rate limiting, multi-tenancy, RBAC, platform console (schools, plans, subscriptions, usage, suspend/activate, audit, support), school onboarding and a progress-driven 13-step setup wizard.
 
-**Phase 3 — academics.** Attendance (five states, configurable edit window, automatic guardian notification on absence), timetable with clash prevention, homework, assignments, exams with per-section papers, marks entry with range validation, result computation with section ranking, publish/unpublish, plus parent, student, teacher, principal and admin dashboards and reporting.
+**Phase 2 — school administration.** Academic years, classes, sections, subjects, teachers with section/subject assignments, students with enrolment history, guardians, staff, per-user permission overrides, and a validate-then-commit CSV import with duplicate detection.
 
-**Phases 4–10 — ahead of the UI.** The schema, provider abstractions and permissions for fees, payments, transport, GPS trips, documents, certificates and library are already in place, so those modules slot in without migrations that reshape existing data.
+**Phase 3 — academics.** Attendance (five states, configurable edit window, automatic guardian notification on absence), timetable with clash prevention, homework with submission tracking and teacher acknowledgement, assignments, exams with per-section papers, marks entry with range validation, result computation with section ranking, publish/unpublish.
+
+**Phase 4 — parent portal.** Child switching, attendance, homework, results, timetable, fees, transport, announcements, events, leave, messages, documents. Private document upload/download, certificate issue with frozen wording, and printable report cards.
+
+**Phase 5 — finance.** Fee categories and structures, idempotent bulk fee generation, concessions (scholarship, sibling, staff ward), collection with sequential receipts, parent online payment through the provider abstraction, printable receipts, staged reminders with per-stage dedupe, and finance reporting. All amounts are integer minor units; balances are derived from the payment ledger, never incremented.
+
+**Phase 6 — transport with live tracking.** Buses, crew, routes, stops, student assignments, document-expiry alerts. Live GPS: the driver console streams position under a shared publish policy, guardians watch the bus on a map with ETA and distance, and proximity crossings notify each family exactly once per trip. Architecture ported from the attached Lactora project (see below).
+
+**Phase 7 — communication.** Notification centre with unread counts in every portal, and parent–teacher messaging threads scoped to one student, so no personal phone number is ever exposed.
+
+**Phase 8 — reports and exports.** Attendance trends, class performance, teacher workload, finance position, plus role-scoped CSV export of students, attendance, fees, results and transport, and print-to-PDF throughout.
+
+**Phase 9 — platform SaaS.** Plans, subscriptions, per-tenant usage against plan limits, invoice ledger, and **enforced** limits — student and teacher caps and plan-gated features now fail closed with a 402 and a clear message.
+
+**Phase 10 — advanced.** PWA (manifest, shortcuts, service worker with an offline page; nothing authenticated is ever cached), and smart notification rules for low attendance, upcoming exams, overdue fees and stale bus trips — all idempotent and safe to schedule.
 
 ---
+
+## Live bus tracking
+
+The tracking architecture follows the reference implementation in the attached **Lactora DairyOS** project: a single dependency-free domain module (`src/lib/tracking.ts`) shared by producer and consumer, so the throttle window, the accuracy policy, the proximity radii and the ETA maths cannot drift between the driver's phone, the server and the parent's map. Also carried across: tenant-first channel naming, the per-trip notice ledger for deduplication, staleness detection with a polling fallback, and interpolated marker animation.
+
+Two things are deliberately different from the reference:
+
+**Transport — Server-Sent Events, not Socket.IO.** Bus position is a one-way server→client stream. The driver publishes over ordinary HTTP POSTs, which retry cleanly on a flaky mobile network, and parents subscribe over SSE. This needs no custom server, so `next start` and the container image are unchanged, and there is one fewer moving part to operate.
+
+**Rendering — raster tiles and SVG, not a WebGL map library.** The map is OpenStreetMap tiles positioned with CSS plus an SVG overlay. No API key, no account, no WebGL requirement on the inexpensive Android phones most parents actually use. Attribution is a licence condition and must stay.
+
+Note that fan-out is in-process (`src/lib/services/tracking-bus.ts`), which is correct for the single-container deployment here. It is also deliberately the only thing that must change to scale horizontally — swap it for Redis pub/sub and nothing above it moves.
 
 ## Project layout
 
@@ -120,21 +146,19 @@ SMS, email, file storage and payments sit behind provider interfaces in `src/lib
 npm test
 ```
 
-41 tests run against a real Postgres (PGlite, in-process — no Docker needed in CI), covering:
+145 tests across 9 files, run against a real Postgres (PGlite, in-process — no Docker needed in CI):
 
-- Tenant isolation: school A's admin cannot list, load or act on school B's records
-- Suspended tenants: every user is denied a session immediately
-- Teacher scope: unassigned sections and unowned subjects are refused
-- Parent scope: parent A cannot reach parent B's child
-- Permission matrix: teachers have no destructive, financial or platform powers
-- Per-user permission overrides grant, revoke and reset correctly
-- Parent OTP: unenrolled numbers rejected, codes single-use, wrong codes counted, resends throttled
-- Onboarding: tenant, settings, trial subscription and first admin created atomically
-- Notifications reach only the right household
-- Results: unpublished results are invisible; ranks are per-section and monotonic
-- Duplicate detection, CSV parsing, grading, phone normalisation, password hashing
-
----
+| Suite | What it proves |
+| --- | --- |
+| `security` | School A cannot list, load or act on school B's records; suspended tenants are denied a session; unassigned teachers are refused a section; parent A cannot reach parent B's child; teachers hold no destructive, financial or platform permission; per-user overrides grant, revoke and reset |
+| `flows` | Parent OTP — unenrolled numbers refused, codes single-use, wrong codes counted, resends throttled; onboarding creates tenant, settings, trial and admin atomically; notifications reach only the right household |
+| `fees` | Money arithmetic never goes negative; concessions cap at the fee and never cross tenants; generation is idempotent; over-payment, zero and negative amounts refused; balances derived so recompute is repeatable; reminders dedupe per stage |
+| `transport` | Trip lifecycle and orphan closure; fix throttling; unusable readings rejected; proximity alerts fire once per trip; boarding refused for students not on the route; stale trips reaped; stream channels isolated per school |
+| `tracking` | The shared domain rules as pure functions — haversine against known distances, bearings, interpolation clamping, coarse fixes accepted but labelled, null island rejected, publish policy, ETA sanity, radius boundaries |
+| `communication` | Thread access for participants only (admins may audit, other teachers may not); replies notify one side; certificates freeze wording and allocate serials; plan limits fail closed at 402; automation rules are idempotent |
+| `homework` | Student ticks, teacher acknowledgement, rework round-trips, class and tenant scoping |
+| `boundaries` | No client component reaches the database or a node-only package, transitively; every API route exports a method and is authorisation-guarded; every data-reading page opts out of static rendering; sensitive writes record an audit entry |
+| `schema` | Migrations apply to a fresh database; seed meets the demo-data bar; every student has an enrolment and a guardian; published results carry ranks |
 
 ## Environment variables
 

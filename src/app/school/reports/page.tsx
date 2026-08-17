@@ -12,6 +12,7 @@ import { TrendChart, BarsChart } from '@/components/charts/simple-charts';
 import { EmptyState } from '@/components/ui/states';
 import { formatCurrency, percent } from '@/lib/utils';
 import { GraduationCap, Wallet, ClipboardCheck } from 'lucide-react';
+import { ExportButtons } from './export-buttons';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +103,7 @@ export default async function ReportsPage() {
       <PageHeader
         title="Reports and analytics"
         description={year ? `Academic year ${year.name}` : 'Executive view of the whole school.'}
+        action={<ExportButtons canFees={session.permissions.includes('fees.view')} canTransport={session.permissions.includes('transport.view')} />}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

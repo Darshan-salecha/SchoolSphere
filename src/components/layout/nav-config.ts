@@ -10,6 +10,7 @@ export const PLATFORM_NAV: NavGroup[] = [
       { label: 'Dashboard', href: '/platform', icon: 'LayoutDashboard', exact: true },
       { label: 'Schools', href: '/platform/schools', icon: 'Building2', permission: 'platform.schools.view' },
       { label: 'Plans', href: '/platform/plans', icon: 'CreditCard', permission: 'platform.plans.manage' },
+      { label: 'Usage', href: '/platform/usage', icon: 'Gauge', permission: 'platform.analytics.view' },
     ],
   },
   {
@@ -53,10 +54,18 @@ export const SCHOOL_NAV: NavGroup[] = [
     ],
   },
   {
+    title: 'Finance',
+    items: [
+      { label: 'Fees', href: '/school/fees', icon: 'Wallet', permission: 'fees.view' },
+      { label: 'Transport', href: '/school/transport', icon: 'Bus', permission: 'transport.view' },
+    ],
+  },
+  {
     title: 'Communication',
     items: [
       { label: 'Announcements', href: '/school/announcements', icon: 'Megaphone', permission: 'announcements.view' },
       { label: 'Events', href: '/school/events', icon: 'CalendarDays', permission: 'events.view' },
+      { label: 'Messages', href: '/school/messages', icon: 'MessagesSquare' },
       { label: 'Leave requests', href: '/school/leave', icon: 'CalendarOff', permission: 'attendance.view' },
     ],
   },
@@ -80,6 +89,8 @@ export const PARENT_NAV: NavGroup[] = [
       { label: 'Homework', href: '/parent/homework', icon: 'NotebookPen' },
       { label: 'Results', href: '/parent/results', icon: 'Trophy' },
       { label: 'Timetable', href: '/parent/timetable', icon: 'CalendarClock' },
+      { label: 'Fees', href: '/parent/fees', icon: 'Wallet' },
+      { label: 'School bus', href: '/parent/transport', icon: 'Bus' },
     ],
   },
   {
@@ -87,6 +98,8 @@ export const PARENT_NAV: NavGroup[] = [
     items: [
       { label: 'Announcements', href: '/parent/announcements', icon: 'Megaphone' },
       { label: 'Events', href: '/parent/events', icon: 'CalendarDays' },
+      { label: 'Messages', href: '/parent/messages', icon: 'MessagesSquare' },
+      { label: 'Documents', href: '/parent/documents', icon: 'FolderOpen' },
       { label: 'Leave requests', href: '/parent/leave', icon: 'CalendarOff' },
     ],
   },

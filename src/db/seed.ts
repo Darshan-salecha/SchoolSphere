@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Db } from '@/db';
 import * as t from '@/db/schema';
 import { gradeFor } from '@/lib/utils';
@@ -759,6 +759,100 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
     .returning();
   await db.insert(t.userRoles).values({ userId: admin3.id, role: 'SCHOOL_ADMIN' });
 
+  /* ------------------- phase 4-10 demo content ---------------------------- */
+
+  // A sibling concession on the second child of family F1.
+  await db.insert(t.feeConcessions).values({
+    schoolId: school.id,
+    studentId: studentRecords[1].id,
+    academicYearId: year.id,
+    type: 'SIBLING',
+    percent: 15,
+    reason: 'Second child of the same family',
+    approvedById: principalUser.id,
+  });
+
+  // A message thread between the first family and the class teacher of 5-A.
+  const [thread] = await db
+    .insert(t.messageThreads)
+    .values({
+      schoolId: school.id,
+      studentId: studentRecords[0].id,
+      parentId: parentByFamily.get('F1')![0].id,
+      staffUserId: teacherRecords.find((tr) => tr.name === 'Meera Iyer')!.userId,
+      subject: 'Extra reading practice for Aarav',
+    })
+    .returning();
+  await db.insert(t.messages).values([
+    {
+      schoolId: school.id,
+      threadId: thread.id,
+      senderUserId: parentByFamily.get('F1')![0].userId,
+      body: 'Good morning. Aarav is finding the comprehension exercises hard. Could you suggest something for home?',
+    },
+    {
+      schoolId: school.id,
+      threadId: thread.id,
+      senderUserId: teacherRecords.find((tr) => tr.name === 'Meera Iyer')!.userId,
+      body: 'Of course. Twenty minutes of reading aloud each evening helps a great deal — I will send a short list home tomorrow.',
+    },
+  ]);
+
+  // A bonafide certificate, already issued.
+  await db.insert(t.certificates).values({
+    schoolId: school.id,
+    studentId: studentRecords[0].id,
+    type: 'BONAFIDE',
+    serialNumber: `BON-${today.getFullYear()}-0001`,
+    body: `This is to certify that ${studentRecords[0].name} of class Class 5-A, bearing admission number DPA-1001, is a bonafide student of ${school.name} during the academic year ${year.name}. This certificate is issued on request for official purposes.`,
+    issuedById: adminUser.id,
+  });
+
+  // A completed trip from this morning with a breadcrumb, so the transport
+  // screens and the parent map have real history to render.
+  const firstRoute = await db.query.routes.findFirst({ where: eq(t.routes.schoolId, school.id) });
+  if (firstRoute) {
+    const [pastTrip] = await db
+      .insert(t.trips)
+      .values({
+        schoolId: school.id,
+        routeId: firstRoute.id,
+        busId: firstRoute.busId,
+        driverId: firstRoute.driverId,
+        direction: 'PICKUP',
+        status: 'COMPLETED',
+        date: iso(today),
+        startedAt: new Date(today.getTime() - 3 * 3600_000),
+        endedAt: new Date(today.getTime() - 2 * 3600_000),
+        lastSeenAt: new Date(today.getTime() - 2 * 3600_000),
+        isActive: false,
+        latitude: 28.5665,
+        longitude: 77.2159,
+      })
+      .returning();
+
+    await db.insert(t.gpsLocations).values(
+      Array.from({ length: 12 }, (_, i) => ({
+        tripId: pastTrip.id,
+        latitude: 28.55 + i * 0.0025,
+        longitude: 77.2 + i * 0.0022,
+        speedMps: 6 + (i % 3),
+        heading: 45,
+        recordedAt: new Date(today.getTime() - (3 * 3600_000 - i * 5 * 60_000)),
+      })),
+    );
+
+    const boarded = studentRecords.slice(0, 4);
+    await db.insert(t.busEvents).values(
+      boarded.map((s, i) => ({
+        tripId: pastTrip.id,
+        studentId: s.id,
+        type: 'BOARDED',
+        createdAt: new Date(today.getTime() - (3 * 3600_000 - i * 6 * 60_000)),
+      })),
+    );
+  }
+
   await db.insert(t.supportTickets).values([
     { schoolId: school.id, subject: 'Bulk import failing for Class 10', category: 'TECHNICAL', body: 'The CSV import reports a duplicate admission number for two rows.', status: 'OPEN', createdById: adminUser.id },
     { schoolId: school2.id, subject: 'Upgrade to Professional plan', category: 'BILLING', body: 'We would like to enable transport and fees before term starts.', status: 'IN_PROGRESS', createdById: admin2.id },
@@ -787,6 +881,9 @@ export async function seed(db: Db, opts: { log?: boolean } = {}) {
     students: studentRecords,
     yearId: year.id,
     publishedExamId: examRows[0].id,
+    routeId: routeSpecs.length ? (await db.query.routes.findFirst({ where: eq(t.routes.schoolId, school.id) }))!.id : '',
+    threadId: thread.id,
+    concessionStudentId: studentRecords[1].id,
   };
 }
 

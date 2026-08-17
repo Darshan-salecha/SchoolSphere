@@ -10,6 +10,7 @@ import { requireCurrentYear } from '@/lib/services/students';
 import { recordAudit } from '@/lib/audit';
 import { hasSchoolWideAccess } from '@/lib/scope';
 import { forbidden } from '@/lib/errors';
+import { assertStudentCapacity } from '@/lib/services/plan-limits';
 
 const bodySchema = z.object({ csv: z.string().min(1, 'Upload a CSV file'), commit: z.boolean().default(false) });
 
@@ -90,6 +91,9 @@ export const POST = handler(async (req: Request) => {
   };
 
   if (!commit) return ok({ preview: true, summary, results });
+
+  // Capacity is checked against the whole batch, not row by row.
+  await assertStudentCapacity(session.schoolId, valid.length);
   if (!valid.length) return ok({ imported: 0, summary, results });
 
   await db.transaction(async (tx) => {

@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { Badge, StatusBadge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { SettingsForm } from './settings-form';
+import { AutomationButton } from './automation-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,11 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="School settings" description="Attendance rules, notifications and subscription." />
+      <PageHeader
+        title="School settings"
+        description="Attendance rules, notifications and subscription."
+        action={canManage ? <AutomationButton /> : undefined}
+      />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">

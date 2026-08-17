@@ -13,6 +13,9 @@ import { Badge, StatusBadge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { QuickForm } from '@/components/forms/quick-form';
+import { StudentFiles } from '@/components/student-files';
+import { listDocuments } from '@/lib/services/documents';
+import { listCertificates } from '@/lib/services/certificates';
 import { formatDate, percent } from '@/lib/utils';
 import { ClipboardCheck, Trophy } from 'lucide-react';
 
@@ -45,6 +48,11 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
     limit: 5,
   });
   const bestPct = results.length ? Math.max(...results.map((r) => r.percentage)) : 0;
+
+  const [documents, certificates] = await Promise.all([
+    listDocuments(session.schoolId, id),
+    listCertificates(session.schoolId, id),
+  ]);
 
   const canManageParents =
     session.permissions.includes('parents.manage') &&
@@ -170,6 +178,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
                 <TH>Percentage</TH>
                 <TH>Grade</TH>
                 <TH>Rank</TH>
+                <TH className="text-right">Report card</TH>
               </TR>
             </THead>
             <TBody>
@@ -180,12 +189,29 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
                   <TD>{r.percentage}%</TD>
                   <TD><Badge tone={r.percentage >= 60 ? 'green' : r.percentage >= 35 ? 'amber' : 'red'}>{r.grade}</Badge></TD>
                   <TD>{r.rank ?? '—'}</TD>
+                  <TD className="text-right">
+                    <Link
+                      href={`/school/students/${student.id}/report-card/${r.examId}`}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Report card
+                    </Link>
+                  </TD>
                 </TR>
               ))}
             </TBody>
           </Table>
         )}
       </Card>
+
+      <div className="mt-5">
+        <StudentFiles
+          studentId={student.id}
+          documents={documents}
+          certificates={certificates}
+          canManage={session.permissions.includes('documents.manage')}
+        />
+      </div>
 
       <Card className="mt-5">
         <CardHeader title="Enrolment history" />

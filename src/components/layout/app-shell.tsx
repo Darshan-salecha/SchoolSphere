@@ -3,11 +3,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import * as Icons from 'lucide-react';
-import { Menu, X, LogOut, School } from 'lucide-react';
+import { Menu, X, LogOut, School, Bell } from 'lucide-react';
 import { cn, initials } from '@/lib/utils';
 import type { NavGroup } from './nav-config';
 
-type ShellUser = { name: string; roleLabel: string; schoolName?: string | null; schoolCode?: string | null };
+type ShellUser = { name: string; roleLabel: string; schoolName?: string | null; schoolCode?: string | null; unread?: number };
 
 function Icon({ name, className }: { name: string; className?: string }) {
   const C = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[name] ?? Icons.Circle;
@@ -72,6 +72,19 @@ export function AppShell({
       </nav>
 
       <div className="border-t border-white/10 p-3">
+        <Link
+          href="/notifications"
+          onClick={() => setOpen(false)}
+          className="mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
+        >
+          <Bell className="h-4 w-4 shrink-0" />
+          <span className="flex-1">Notifications</span>
+          {Boolean(user.unread) && (
+            <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+              {user.unread! > 99 ? '99+' : user.unread}
+            </span>
+          )}
+        </Link>
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-500 text-xs font-semibold text-white">
             {initials(user.name)}

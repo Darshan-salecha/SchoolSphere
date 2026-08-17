@@ -45,3 +45,24 @@
     @apply w-full overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card;
   }
 }
+
+@media print {
+  /* Only the document itself should reach the paper. */
+  aside,
+  header.sticky,
+  .print\:hidden {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border-color: #e2e8f0 !important;
+    break-inside: avoid;
+  }
+}
