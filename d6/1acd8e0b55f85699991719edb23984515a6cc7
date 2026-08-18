@@ -1,0 +1,32 @@
+.env.production.example
+  h_48d3af4cb421eb 11,15-39
+Caddyfile
+  h_48d3af4cb421eb 1-17,20-21,25-26,28
+DEPLOYMENT.md
+  h_48d3af4cb421eb 28-36,104-110,115,127-130,136-147,226-264
+PORTS.md
+  h_48d3af4cb421eb 1-65
+docker-compose.prod.yml
+  h_48d3af4cb421eb 8-13,31-32,76-80,86-89,91-93,96-98
+docker-compose.yml
+  h_48d3af4cb421eb 3-5,9,16
+public/sw.js
+  h_48d3af4cb421eb 11
+scripts/deploy.sh
+  h_48d3af4cb421eb 1-60
+scripts/preflight-ports.sh
+  h_48d3af4cb421eb 1-128
+src/app/offline/page.tsx
+  h_48d3af4cb421eb 5-12,20,22-23,25-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "d61acd8e0b55f85699991719edb23984515a6cc7",
+  "prompts": {},
+  "humans": {
+    "h_48d3af4cb421eb": {
+      "author": "Darshan <darshan.salecha@1mg.com>"
+    }
+  }
+}
