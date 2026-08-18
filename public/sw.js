@@ -8,7 +8,7 @@
  * What it does cache: the static build assets and an offline page, so the app
  * opens from the home screen and explains itself when there is no signal.
  */
-const VERSION = 'schoolsphere-v1';
+const VERSION = 'schoolsphere-v2';
 const OFFLINE_URL = '/offline';
 const PRECACHE = [OFFLINE_URL, '/icon.svg', '/manifest.webmanifest'];
 

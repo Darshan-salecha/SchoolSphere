@@ -1,13 +1,31 @@
-# Caddy obtains and renews Let's Encrypt certificates automatically.
-# The only prerequisite is that APP_DOMAIN resolves to this server's public IP
-# and that ports 80 and 443 are open.
+# Caddy is the only container on this host allowed to bind ports 80 and 443.
+# See PORTS.md for the full port registry across the stacks on this server.
+#
+# TLS mode is chosen by CADDY_TLS_DIRECTIVE in .env.production. The value is
+# substituted into this file verbatim before Caddy parses it:
+#
+#   CADDY_TLS_DIRECTIVE=                → automatic Let's Encrypt (default).
+#                                         Requires APP_DOMAIN to be a real,
+#                                         publicly resolvable name.
+#   CADDY_TLS_DIRECTIVE=tls internal    → Caddy's own local CA. Works on a raw
+#                                         IP host or an sslip.io/nip.io name.
+#                                         Browsers show a one-time warning.
+#
+# If Caddy has no certificate for the requested hostname it aborts the TLS
+# handshake, the browser reports a network error, and the service worker falls
+# back to the cached /offline page — which is why an unreachable site looks
+# like "You are offline" rather than a server error.
 
 {$APP_DOMAIN} {
+	{$CADDY_TLS_DIRECTIVE}
+
 	encode zstd gzip
 
 	# HSTS is set here rather than in the app so it also covers redirects.
+	# Leave it off while using a self-signed certificate: pinning HSTS against
+	# a name you are still experimenting with is hard to undo in a browser.
 	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		{$CADDY_HSTS_HEADER}
 		-Server
 	}
 

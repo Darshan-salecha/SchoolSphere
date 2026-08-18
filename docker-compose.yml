@@ -1,16 +1,19 @@
 # Local development database only — Postgres on localhost:5432.
 # For production use docker-compose.prod.yml, which also builds and runs the app.
+#
+# The host port is a variable so this can coexist with another Postgres you
+# already have running: DEV_DB_PORT=5434 docker compose up -d
 services:
   db:
     image: postgres:16-alpine
-    container_name: schoolsphere-db
+    container_name: schoolsphere-dev-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: schoolsphere
       POSTGRES_PASSWORD: schoolsphere
       POSTGRES_DB: schoolsphere
     ports:
-      - '5432:5432'
+      - '127.0.0.1:${DEV_DB_PORT:-5432}:5432'
     volumes:
       - schoolsphere_pgdata:/var/lib/postgresql/data
     healthcheck:

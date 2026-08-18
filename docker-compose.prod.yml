@@ -5,7 +5,12 @@
 #   migrate → runs once per deploy and exits; app waits for it to succeed
 #   db      → Postgres, reachable only on the internal network
 #
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   ./scripts/deploy.sh          (preflight port check, then build + up)
+#
+# Every host port below comes from an environment variable with a SchoolSphere
+# specific default, so this stack can never collide with another stack on the
+# same box. The reserved block is 8100-8199 (plus 80/443 for the edge proxy)
+# and 5434 for Postgres. See PORTS.md before changing any of them.
 
 name: schoolsphere
 
@@ -23,6 +28,8 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./backups:/backups
     # No `ports:` on purpose — Postgres stays on the internal network only.
+    # Host port 5434 is reserved for it in PORTS.md if you ever need a tunnel;
+    # prefer `ssh -L 5434:localhost:5434` over publishing the port.
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-schoolsphere} -d ${POSTGRES_DB:-schoolsphere}']
       interval: 10s
@@ -66,19 +73,29 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    expose:
-      - '3000'
+    # Bound to the loopback interface only: this is a debugging door
+    # (`curl http://127.0.0.1:8100/api/health`), not a public entrypoint.
+    # Public traffic always arrives through caddy.
+    ports:
+      - '127.0.0.1:${APP_HOST_PORT:-8100}:3000'
     networks: [internal, web]
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    # 80 and 443 can only ever belong to one container on this host. If another
+    # stack needs them, move that stack — do not change these, or Let's Encrypt
+    # and plain-http redirects both break. scripts/preflight-ports.sh checks
+    # that they are free before every deploy.
     ports:
-      - '80:80'
-      - '443:443'
-      - '443:443/udp'
+      - '${EDGE_HTTP_PORT:-80}:80'
+      - '${EDGE_HTTPS_PORT:-443}:443'
+      - '${EDGE_HTTPS_PORT:-443}:443/udp'
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env.production}
+      # Substituted into the Caddyfile verbatim. Empty = automatic Let's Encrypt.
+      CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE-}
+      CADDY_HSTS_HEADER: ${CADDY_HSTS_HEADER-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

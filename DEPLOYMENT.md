@@ -25,6 +25,15 @@ Do this first. Caddy requests a certificate the moment it starts, and that only 
 dig +short school.yourdomain.com
 ```
 
+### No domain yet?
+
+You can run on an IP-derived hostname such as `169-58-175-152.sslip.io`, which
+resolves to the IP embedded in it without any DNS setup. Let's Encrypt issuance
+on those names is unreliable, so set `CADDY_TLS_DIRECTIVE=tls internal` in
+`.env.production` (Step 4) and Caddy signs the certificate itself. Visitors get a
+one-time browser warning. That is fine for a demo; move to a real domain before
+parents use it.
+
 ---
 
 ## Step 2 — Install Docker on the server
@@ -93,10 +102,17 @@ chmod 600 .env.production
 ## Step 5 — Build and start
 
 ```bash
+chmod +x scripts/deploy.sh scripts/preflight-ports.sh
+./scripts/deploy.sh
+```
+
+That checks the host ports are free, then runs the same Compose command you would type by hand:
+
+```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
-First build takes a few minutes. In order, Compose will: start Postgres and wait for it to be healthy, run the migration job to completion, start the app, then start Caddy, which fetches a certificate from Let's Encrypt.
+First build takes a few minutes. In order, Compose will: start Postgres and wait for it to be healthy, run the migration job to completion, start the app, then start Caddy, which obtains a certificate.
 
 Watch it come up:
 
@@ -108,9 +124,24 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
 Confirm the app is healthy from the server itself:
 
 ```bash
-curl -s https://school.yourdomain.com/api/health
+# The app directly, no TLS involved — isolates the app from the proxy.
+curl -s http://127.0.0.1:8100/api/health
+# Through Caddy. -k skips verification, needed with a self-signed certificate.
+curl -sk https://school.yourdomain.com/api/health
 # {"status":"ok"}
 ```
+
+---
+
+## Sharing a server with other stacks
+
+If this box also runs other Docker projects, read **[PORTS.md](PORTS.md)** before deploying. The short version:
+
+- Every stack owns a 100-wide host-port block. SchoolSphere owns `8100–8199`.
+- `80`, `443` and `443/udp` belong to SchoolSphere's `caddy` and to no other container. Two containers asking for `80` is not an error you see at deploy time — the loser just never listens, and the site goes dark hours later.
+- Everything except Caddy binds `127.0.0.1`. A port published on `0.0.0.0` is on the public internet regardless of ufw, because Docker writes its rules ahead of ufw's in iptables.
+
+`./scripts/preflight-ports.sh` checks all of this and names the container holding a port, rather than leaving you with "address already in use".
 
 ---
 
@@ -189,6 +220,45 @@ Uploaded documents live in the `uploads` volume, separate from the database:
 docker run --rm -v schoolsphere_uploads:/data -v $(pwd)/backups:/backup alpine \
   tar czf /backup/uploads-$(date +%F).tar.gz -C /data .
 ```
+
+---
+
+## Troubleshooting
+
+### The site shows "Can't reach SchoolSphere" / "You are offline"
+
+That page comes from the service worker, and it appears whenever a navigation
+request fails — including when the server is fine but the browser could not
+complete the TLS handshake. Work outwards:
+
+```bash
+# 1. Is the app itself alive? (loopback, no proxy, no TLS)
+curl -s http://127.0.0.1:8100/api/health
+
+# 2. Is Caddy actually listening on 443?
+ss -ltnp | grep -E ':(80|443)\b'
+docker ps --format '{{.Names}}\t{{.Ports}}'
+
+# 3. Does the handshake succeed for the exact hostname you type?
+openssl s_client -connect 127.0.0.1:443 -servername school.yourdomain.com </dev/null | head
+
+# 4. What did Caddy think?
+docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 caddy
+```
+
+`tlsv1 alert internal error` in step 3 means Caddy has no certificate for that
+hostname. Either `APP_DOMAIN` does not match the name you are typing, or
+certificate issuance failed — the Caddy log says which. On an IP-derived
+hostname, set `CADDY_TLS_DIRECTIVE=tls internal` and redeploy.
+
+If a port from step 2 is missing entirely, another container took it. See
+[PORTS.md](PORTS.md).
+
+### A browser keeps showing the offline page after the server is fixed
+
+The old service worker is still installed on that device. It updates on its own
+within a minute or two of a successful load; to force it, open DevTools →
+Application → Service Workers → Unregister, or hard-reload twice.
 
 ---
 
